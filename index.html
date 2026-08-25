@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#15181d">
+  <meta name="robots" content="noindex, nofollow">
+  <title>真戦 作戦図エディタ</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">戦</div>
+        <div>
+          <h1>真戦 作戦図エディタ</h1>
+          <p>作戦の作成・保存・共有</p>
+        </div>
+      </div>
+
+      <label class="project-name-wrap">
+        <span>作戦名</span>
+        <input id="projectName" type="text" value="新規作戦" maxlength="80" autocomplete="off">
+      </label>
+
+      <nav class="header-actions" aria-label="ファイル操作">
+        <button id="newProjectBtn" class="button ghost" type="button">新規</button>
+        <button id="loadMapBtn" class="button" type="button">マップ画像</button>
+        <button id="saveProjectBtn" class="button" type="button">作戦保存</button>
+        <button id="loadProjectBtn" class="button" type="button">作戦読込</button>
+        <div class="menu-wrap">
+          <button id="exportMenuBtn" class="button accent" type="button" aria-expanded="false">共有・出力</button>
+          <div id="exportMenu" class="popup-menu" hidden>
+            <button id="exportPngBtn" type="button">全体をPNG出力</button>
+            <button id="exportViewPngBtn" type="button">現在画面をPNG出力</button>
+            <button id="exportViewerBtn" type="button">共有用HTML出力</button>
+          </div>
+        </div>
+        <button id="helpBtn" class="icon-button" type="button" title="使い方" aria-label="使い方">?</button>
+        <button id="toggleInspectorBtn" class="button ghost mobile-only" type="button">属性</button>
+      </nav>
+    </header>
+
+    <main class="workspace">
+      <aside class="tool-panel" aria-label="作戦記号ツール">
+        <div class="tool-section">
+          <div class="section-title">操作</div>
+          <button class="tool-button active" data-tool="select" type="button" title="選択・移動 (V)">
+            <span class="tool-icon pointer-icon">↖</span><span>選択</span>
+          </button>
+          <button class="tool-button" data-tool="pan" type="button" title="マップ移動 (H)">
+            <span class="tool-icon">✥</span><span>移動</span>
+          </button>
+        </div>
+
+        <div class="tool-section">
+          <div class="section-title">部隊・拠点</div>
+          <button class="tool-button" data-tool="ally" type="button"><span class="tool-icon marker ally">自</span><span>自軍</span></button>
+          <button class="tool-button" data-tool="enemy" type="button"><span class="tool-icon marker enemy">敵</span><span>敵軍</span></button>
+          <button class="tool-button" data-tool="garrison" type="button"><span class="tool-icon">♜</span><span>駐屯</span></button>
+          <button class="tool-button" data-tool="camp" type="button"><span class="tool-icon">▲</span><span>幕舎</span></button>
+          <button class="tool-button" data-tool="fort" type="button"><span class="tool-icon">▥</span><span>陣城</span></button>
+        </div>
+
+        <div class="tool-section">
+          <div class="section-title">攻略対象</div>
+          <button class="tool-button" data-tool="castle" type="button"><span class="tool-icon">城</span><span>城</span></button>
+          <button class="tool-button" data-tool="gate" type="button"><span class="tool-icon">関</span><span>関所</span></button>
+          <button class="tool-button" data-tool="bridge" type="button"><span class="tool-icon">橋</span><span>橋</span></button>
+          <button class="tool-button" data-tool="station" type="button"><span class="tool-icon">駅</span><span>駅路</span></button>
+        </div>
+
+        <div class="tool-section">
+          <div class="section-title">作戦</div>
+          <button class="tool-button" data-tool="arrow" type="button"><span class="tool-icon">➜</span><span>侵攻</span></button>
+          <button class="tool-button" data-tool="defense" type="button"><span class="tool-icon">┻</span><span>防衛線</span></button>
+          <button class="tool-button" data-tool="area" type="button"><span class="tool-icon area-icon"></span><span>範囲</span></button>
+          <button class="tool-button" data-tool="target" type="button"><span class="tool-icon">◎</span><span>目標</span></button>
+          <button class="tool-button" data-tool="text" type="button"><span class="tool-icon">T</span><span>メモ</span></button>
+        </div>
+
+        <div class="tool-section compact-actions">
+          <button id="undoBtn" class="small-action" type="button" disabled title="元に戻す (Ctrl+Z)">↶</button>
+          <button id="redoBtn" class="small-action" type="button" disabled title="やり直す (Ctrl+Y)">↷</button>
+          <button id="deleteBtn" class="small-action danger" type="button" disabled title="選択削除 (Delete)">⌫</button>
+        </div>
+      </aside>
+
+      <section id="stageWrap" class="stage-wrap" aria-label="作戦マップ">
+        <canvas id="mapCanvas"></canvas>
+        <div id="emptyState" class="empty-state">
+          <div class="empty-card">
+            <div class="empty-icon">地図</div>
+            <h2>最初にマップ画像を読み込んでください</h2>
+            <p>駅路・城・関所・橋が表示される倍率で作成した結合済み画像を使用します。</p>
+            <button id="emptyLoadMapBtn" class="button accent" type="button">マップ画像を選択</button>
+            <a href="map-maker.html" class="text-link">複数スクリーンショットを結合する</a>
+          </div>
+        </div>
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      </section>
+
+      <aside id="inspector" class="inspector" aria-label="属性とレイヤー">
+        <div class="inspector-header">
+          <h2>属性</h2>
+          <button id="closeInspectorBtn" class="icon-button mobile-only" type="button" aria-label="閉じる">×</button>
+        </div>
+
+        <div id="noSelection" class="no-selection">
+          <div class="no-selection-icon">◇</div>
+          <p>記号を選択すると、名称や色を変更できます。</p>
+        </div>
+
+        <form id="propertyForm" class="property-form" hidden onsubmit="return false;">
+          <label>
+            <span>名称</span>
+            <input id="propLabel" type="text" maxlength="80" autocomplete="off">
+          </label>
+
+          <label>
+            <span>説明</span>
+            <textarea id="propDescription" rows="3" maxlength="500"></textarea>
+          </label>
+
+          <div class="form-row">
+            <label>
+              <span>色</span>
+              <input id="propColor" type="color">
+            </label>
+            <label>
+              <span>不透明度</span>
+              <input id="propOpacity" type="range" min="10" max="100" step="5">
+            </label>
+          </div>
+
+          <div class="form-row">
+            <label>
+              <span>大きさ</span>
+              <input id="propSize" type="range" min="12" max="120" step="2">
+            </label>
+            <label>
+              <span>線の太さ</span>
+              <input id="propLineWidth" type="range" min="1" max="20" step="1">
+            </label>
+          </div>
+
+          <label>
+            <span>作戦段階</span>
+            <select id="propPhase">
+              <option value="共通">共通</option>
+              <option value="第1段階">第1段階</option>
+              <option value="第2段階">第2段階</option>
+              <option value="第3段階">第3段階</option>
+              <option value="予備">予備</option>
+            </select>
+          </label>
+
+          <div class="object-actions">
+            <button id="duplicateBtn" class="button ghost" type="button">複製</button>
+            <button id="bringFrontBtn" class="button ghost" type="button">最前面</button>
+            <button id="deleteObjectBtn" class="button danger" type="button">削除</button>
+          </div>
+        </form>
+
+        <section class="panel-section phase-filter-section">
+          <div class="section-heading">
+            <h3>表示する段階</h3>
+          </div>
+          <select id="phaseFilter">
+            <option value="すべて">すべて</option>
+            <option value="共通">共通のみ</option>
+            <option value="第1段階">共通＋第1段階</option>
+            <option value="第2段階">共通＋第2段階</option>
+            <option value="第3段階">共通＋第3段階</option>
+            <option value="予備">共通＋予備</option>
+          </select>
+        </section>
+
+        <section class="panel-section coordinate-section">
+          <div class="section-heading">
+            <h3>ゲーム座標</h3>
+            <button id="calibrationBtn" class="text-button" type="button">設定</button>
+          </div>
+          <p id="calibrationSummary" class="muted">未設定</p>
+        </section>
+
+        <section class="panel-section layer-section">
+          <div class="section-heading">
+            <h3>配置済み記号</h3>
+            <span id="objectCount" class="count-badge">0</span>
+          </div>
+          <div id="layerList" class="layer-list"></div>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="status-bar">
+      <span id="cursorPosition">画像座標: --, --</span>
+      <span id="gamePosition">ゲーム座標: 未設定</span>
+      <span class="status-spacer"></span>
+      <button id="fitBtn" class="status-button" type="button">全体表示</button>
+      <button id="zoomOutBtn" class="status-button" type="button" aria-label="縮小">−</button>
+      <span id="zoomDisplay">100%</span>
+      <button id="zoomInBtn" class="status-button" type="button" aria-label="拡大">＋</button>
+    </footer>
+  </div>
+
+  <input id="mapFileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+  <input id="projectFileInput" type="file" accept=".nssmap,.json,application/json" hidden>
+
+  <dialog id="helpDialog" class="modal">
+    <form method="dialog" class="modal-card large">
+      <div class="modal-header">
+        <h2>使い方</h2>
+        <button class="icon-button" value="cancel" aria-label="閉じる">×</button>
+      </div>
+      <div class="modal-body help-content">
+        <section>
+          <h3>1. 背景マップ</h3>
+          <p>「マップ画像」から、結合済みの真戦マップ画像を読み込みます。画像は外部へ送信されず、ブラウザ内で処理します。</p>
+        </section>
+        <section>
+          <h3>2. 作戦記号</h3>
+          <p>左のツールを選び、マップ上をクリックまたはドラッグして配置します。選択ツールでは移動と属性編集ができます。</p>
+        </section>
+        <section>
+          <h3>3. 保存と共有</h3>
+          <p>「作戦保存」は編集可能な <code>.nssmap</code> ファイルです。「共有用HTML」は閲覧専用の単一HTMLを作成します。Discord等でファイル共有できます。</p>
+        </section>
+        <section>
+          <h3>主な操作</h3>
+          <dl class="shortcut-list">
+            <div><dt>マウスホイール</dt><dd>拡大・縮小</dd></div>
+            <div><dt>右ドラッグ / Space＋ドラッグ</dt><dd>マップ移動</dd></div>
+            <div><dt>Ctrl＋Z / Ctrl＋Y</dt><dd>元に戻す / やり直す</dd></div>
+            <div><dt>Delete</dt><dd>選択記号を削除</dd></div>
+            <div><dt>V / H</dt><dd>選択 / マップ移動</dd></div>
+          </dl>
+        </section>
+      </div>
+      <div class="modal-footer">
+        <button class="button accent" value="default">閉じる</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="calibrationDialog" class="modal">
+    <form id="calibrationForm" method="dialog" class="modal-card">
+      <div class="modal-header">
+        <h2>ゲーム座標の設定</h2>
+        <button class="icon-button" value="cancel" aria-label="閉じる">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-note">画像上の左上と右下に対応するゲーム内座標を入力します。マップ画像全体がゲーム座標軸と平行であることが前提です。</p>
+        <div class="coordinate-grid">
+          <fieldset>
+            <legend>画像の左上</legend>
+            <label><span>X</span><input id="calTopLeftX" type="number" step="1" required></label>
+            <label><span>Y</span><input id="calTopLeftY" type="number" step="1" required></label>
+          </fieldset>
+          <fieldset>
+            <legend>画像の右下</legend>
+            <label><span>X</span><input id="calBottomRightX" type="number" step="1" required></label>
+            <label><span>Y</span><input id="calBottomRightY" type="number" step="1" required></label>
+          </fieldset>
+        </div>
+      </div>
+      <div class="modal-footer between">
+        <button id="clearCalibrationBtn" class="button ghost" type="button">設定解除</button>
+        <div>
+          <button class="button ghost" value="cancel">キャンセル</button>
+          <button id="saveCalibrationBtn" class="button accent" value="default">保存</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
