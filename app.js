@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 11;
+  const APP_VERSION = 12;
   const MAX_HISTORY = 80;
   const MIN_ZOOM = 0.03;
   const MAX_ZOOM = 12;
@@ -15,31 +15,59 @@
   const PHASES = ['共通', '第1段階', '第2段階', '第3段階', '予備'];
   const PK1_ROUTE_WORKER_SOURCE = String.raw`
 const W=2000,H=3250,N=W*H;
-let bitset=null;
-let gScore=new Uint32Array(N),turnScore=new Uint16Array(N),seen=new Uint16Array(N),parentDir=new Uint8Array(N),generation=1;
+let bitset=null,stationBits=null;
+let gScore=new Uint32Array(N),roadScore=new Uint16Array(N),turnScore=new Uint16Array(N),seen=new Uint16Array(N),parentDir=new Uint8Array(N),generation=1;
 const dirs=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
-function basePassable(i){return !!bitset&&((bitset[i>>3]>>(i&7))&1)!==0}
-function makeBlocked(gates,ids){const wanted=new Set(ids||[]),out=new Set();if(!wanted.size)return out;for(const g of gates){if(!wanted.has(Number(g.id)))continue;for(let y=Number(g.ymin);y<=Number(g.ymax);y++)for(let x=Number(g.xmin);x<=Number(g.xmax);x++)out.add(y*W+x)}return out}
+function bitOn(bits,i){return !!bits&&((bits[i>>3]>>(i&7))&1)!==0}
+function basePassable(i){return bitOn(bitset,i)}
+function isStationRoad(i){return bitOn(stationBits,i)}
+function makeBlocked(gates,ids){const wanted=new Set((ids||[]).map(Number)),out=new Set();if(!wanted.size)return out;for(const g of gates){if(!wanted.has(Number(g.id)))continue;for(let y=Number(g.ymin);y<=Number(g.ymax);y++)for(let x=Number(g.xmin);x<=Number(g.xmax);x++)out.add(y*W+x)}return out}
 function heuristic(x,y,gx,gy){return Math.max(Math.abs(x-gx),Math.abs(y-gy))}
-class Heap{constructor(){this.i=[];this.f=[];this.g=[];this.t=[]}get length(){return this.i.length}push(idx,fv,gv,tv){let p=this.i.length;this.i.push(idx);this.f.push(fv);this.g.push(gv);this.t.push(tv);while(p){let q=(p-1)>>1;if(this.f[q]<fv||(this.f[q]===fv&&this.t[q]<=tv))break;this.i[p]=this.i[q];this.f[p]=this.f[q];this.g[p]=this.g[q];this.t[p]=this.t[q];p=q}this.i[p]=idx;this.f[p]=fv;this.g[p]=gv;this.t[p]=tv}pop(){const n=this.i.length;if(!n)return null;const oi=this.i[0],of=this.f[0],og=this.g[0],ot=this.t[0],li=this.i.pop(),lf=this.f.pop(),lg=this.g.pop(),lt=this.t.pop();if(n>1){let p=0;while(true){let a=p*2+1;if(a>=n-1)break;let b=a+1,c=(b<n-1&&(this.f[b]<this.f[a]||(this.f[b]===this.f[a]&&this.t[b]<this.t[a])))?b:a;if(this.f[c]>lf||(this.f[c]===lf&&this.t[c]>=lt))break;this.i[p]=this.i[c];this.f[p]=this.f[c];this.g[p]=this.g[c];this.t[p]=this.t[c];p=c}this.i[p]=li;this.f[p]=lf;this.g[p]=lg;this.t[p]=lt}return[oi,of,og,ot]}}
+function betterHeap(a,b){return a.f<b.f||(a.f===b.f&&(a.r>b.r||(a.r===b.r&&a.t<b.t)))}
+class Heap{constructor(){this.a=[]}get length(){return this.a.length}push(v){let p=this.a.length;this.a.push(v);while(p){const q=(p-1)>>1;if(betterHeap(this.a[q],v))break;this.a[p]=this.a[q];p=q}this.a[p]=v}pop(){const n=this.a.length;if(!n)return null;const out=this.a[0],last=this.a.pop();if(n>1){let p=0;while(true){let a=p*2+1;if(a>=n-1)break;let b=a+1,c=b<n-1&&betterHeap(this.a[b],this.a[a])?b:a;if(betterHeap(last,this.a[c]))break;this.a[p]=this.a[c];p=c}this.a[p]=last}return out}}
 function bump(){generation++;if(generation>=65535){seen.fill(0);generation=1}}
-function route(start,goal,blocked,penalty,maxExpand=3000000,penaltyCost=4){
+function route(start,goal,blocked,maxExpand=3000000){
   bump();const[sx,sy]=start,[gx,gy]=goal;
   if(sx<0||sx>=W||sy<0||sy>=H||gx<0||gx>=W||gy<0||gy>=H)return{status:'outside'};
   const sidx=sy*W+sx,gidx=gy*W+gx,can=i=>basePassable(i)&&!blocked.has(i);
   if(!can(sidx))return{status:'start_blocked'};if(!can(gidx))return{status:'goal_blocked'};
-  const heap=new Heap();seen[sidx]=generation;gScore[sidx]=0;turnScore[sidx]=0;parentDir[sidx]=0;heap.push(sidx,heuristic(sx,sy,gx,gy),0,0);let expanded=0;
-  while(heap.length){const item=heap.pop(),idx=item[0],pg=item[2],pt=item[3];if(seen[idx]!==generation||gScore[idx]!==pg||turnScore[idx]!==pt)continue;
-    if(idx===gidx){const rev=[idx];let cur=idx;while(cur!==sidx){const code=parentDir[cur]-1;if(code<0)return{status:'parent_error'};const[dx,dy]=dirs[code],x=cur%W,y=Math.floor(cur/W);cur=(y-dy)*W+(x-dx);rev.push(cur)}rev.reverse();return{status:'ok',path:rev,steps:rev.length-1,cost:pg,expanded}}
+  const heap=new Heap();seen[sidx]=generation;gScore[sidx]=0;roadScore[sidx]=isStationRoad(sidx)?1:0;turnScore[sidx]=0;parentDir[sidx]=0;
+  heap.push({i:sidx,f:heuristic(sx,sy,gx,gy),g:0,r:roadScore[sidx],t:0});
+  let expanded=0,bestGoal=0xffffffff;
+  while(heap.length){
+    const q=heap.pop(),idx=q.i;
+    if(seen[idx]!==generation||gScore[idx]!==q.g||roadScore[idx]!==q.r||turnScore[idx]!==q.t)continue;
+    if(q.f>bestGoal)break;
+    if(idx===gidx){bestGoal=q.g;continue}
     if(++expanded>maxExpand)return{status:'max_expand',expanded};
     const x=idx%W,y=Math.floor(idx/W),prev=parentDir[idx]-1;
-    for(let di=0;di<8;di++){const dx=dirs[di][0],dy=dirs[di][1],nx=x+dx,ny=y+dy;if(nx<0||nx>=W||ny<0||ny>=H)continue;const ni=ny*W+nx;if(!can(ni))continue;const extra=penalty&&penalty.has(ni)?penaltyCost:0,ng=pg+1+extra,nt=Math.min(65535,pt+((prev>=0&&prev!==di)?1:0));if(seen[ni]!==generation||ng<gScore[ni]||(ng===gScore[ni]&&nt<turnScore[ni])){seen[ni]=generation;gScore[ni]=ng;turnScore[ni]=nt;parentDir[ni]=di+1;heap.push(ni,ng+heuristic(nx,ny,gx,gy),ng,nt)}}
+    for(let di=0;di<8;di++){
+      const dx=dirs[di][0],dy=dirs[di][1],nx=x+dx,ny=y+dy;if(nx<0||nx>=W||ny<0||ny>=H)continue;
+      const ni=ny*W+nx;if(!can(ni))continue;
+      const ng=q.g+1,nf=ng+heuristic(nx,ny,gx,gy);if(nf>bestGoal)continue;
+      const nr=Math.min(65535,q.r+(isStationRoad(ni)?1:0));
+      const nt=Math.min(65535,q.t+((prev>=0&&prev!==di)?1:0));
+      const better=seen[ni]!==generation||ng<gScore[ni]||(ng===gScore[ni]&&(nr>roadScore[ni]||(nr===roadScore[ni]&&nt<turnScore[ni])));
+      if(better){seen[ni]=generation;gScore[ni]=ng;roadScore[ni]=nr;turnScore[ni]=nt;parentDir[ni]=di+1;heap.push({i:ni,f:nf,g:ng,r:nr,t:nt})}
+    }
   }
-  return{status:'no_path',expanded}
+  if(seen[gidx]!==generation||gScore[gidx]===0xffffffff)return{status:'no_path',expanded};
+  const rev=[gidx];let cur=gidx;
+  while(cur!==sidx){const code=parentDir[cur]-1;if(code<0)return{status:'parent_error'};const[dx,dy]=dirs[code],x=cur%W,y=Math.floor(cur/W);cur=(y-dy)*W+(x-dx);rev.push(cur)}
+  rev.reverse();return{status:'ok',path:rev,steps:rev.length-1,stationCells:roadScore[gidx],turns:turnScore[gidx],expanded};
 }
-function routeAll(points,blocked,penalty,maxExpand){let total=0,expanded=0,full=[],segments=[];for(let k=0;k<points.length-1;k++){const r=route(points[k],points[k+1],blocked,penalty,maxExpand);expanded+=r.expanded||0;segments.push({start:points[k],goal:points[k+1],status:r.status,steps:r.steps??null,expanded:r.expanded||0});if(r.status!=='ok')return{status:r.status,totalSteps:null,segments,expanded};total+=r.steps;full=full.concat(k?r.path.slice(1):r.path)}return{status:'ok',totalSteps:total,segments,expanded,path:full}}
-function addPenalty(path,set){if(!path||path.length<3)return;for(let i=1;i<path.length-1;i++)set.add(path[i])}
-self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.buffer);self.postMessage({type:'ready'});return}if(m.type!=='route')return;try{if(!bitset)throw new Error('route data not initialized');const blocked=makeBlocked(m.gates||[],m.blockedGateIds||[]),pts=m.points||[],routeCount=Math.max(1,Math.min(3,Number(m.routeCount)||1));const penalty=new Set(),routes=[];for(let i=0;i<routeCount;i++){const r=routeAll(pts,blocked,penalty,m.maxExpand||3000000);if(r.status!=='ok'){if(i===0){self.postMessage({type:'result',status:r.status});return}break}const packed=new Uint32Array(r.path);routes.push({totalSteps:r.totalSteps,expanded:r.expanded,path:packed});addPenalty(r.path,penalty)}const transfers=routes.map(r=>r.path.buffer);self.postMessage({type:'result',status:'ok',routes},transfers)}catch(err){self.postMessage({type:'result',status:'error',message:String(err&&err.message||err)})}}
+function routeAll(points,blocked,maxExpand){let total=0,station=0,turns=0,expanded=0,full=[],segments=[];for(let k=0;k<points.length-1;k++){const r=route(points[k],points[k+1],blocked,maxExpand);expanded+=r.expanded||0;segments.push({start:points[k],goal:points[k+1],status:r.status,steps:r.steps??null,stationCells:r.stationCells??null,expanded:r.expanded||0});if(r.status!=='ok')return{status:r.status,totalSteps:null,segments,expanded};total+=r.steps;station+=r.stationCells||0;turns+=r.turns||0;full=full.concat(k?r.path.slice(1):r.path)}return{status:'ok',totalSteps:total,stationCells:station,turns,segments,expanded,path:full}}
+function requiredSet(points){const s=new Set();for(const p of points||[])s.add(Number(p[1])*W+Number(p[0]));return s}
+function blockRouteInterior(path,set,required){if(!path||path.length<3)return;for(let i=1;i<path.length-1;i++){const idx=path[i];if(!required.has(idx))set.add(idx)}}
+function blockDiversityWindow(path,set,required,ratio,windowSize=7){if(!path||path.length<5)return;const center=Math.max(1,Math.min(path.length-2,Math.floor((path.length-1)*ratio))),half=Math.floor(windowSize/2);for(let i=Math.max(1,center-half);i<=Math.min(path.length-2,center+half);i++){const idx=path[i];if(!required.has(idx))set.add(idx)}}
+function pack(r){return{totalSteps:r.totalSteps,stationCells:r.stationCells,turns:r.turns,expanded:r.expanded,path:new Uint32Array(r.path)}}
+self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.buffer);stationBits=new Uint8Array(Math.ceil(N/8));const runs=m.stationRuns?new Uint32Array(m.stationRuns):new Uint32Array(0);for(let k=0;k+1<runs.length;k+=2){const start=runs[k],len=runs[k+1];for(let i=start,end=Math.min(N,start+len);i<end;i++)stationBits[i>>3]|=1<<(i&7)}self.postMessage({type:'ready'});return}if(m.type!=='route')return;try{
+  if(!bitset)throw new Error('route data not initialized');const gateBlocked=makeBlocked(m.gates||[],m.blockedGateIds||[]),pts=m.points||[],routeCount=Math.max(1,Math.min(3,Number(m.routeCount)||1)),routes=[];
+  const r1=routeAll(pts,gateBlocked,m.maxExpand||3000000);if(r1.status!=='ok'){self.postMessage({type:'result',status:r1.status});return}routes.push(pack(r1));
+  if(routeCount>=2){const req=requiredSet(pts),avoid1=new Set(gateBlocked);blockRouteInterior(r1.path,avoid1,req);const r2=routeAll(pts,avoid1,m.maxExpand||3000000);if(r2.status==='ok'){routes.push(pack(r2));if(routeCount>=3){let r3=null;for(const ratio of [.5,.34,.66,.25,.75]){const avoid3=new Set(avoid1);blockDiversityWindow(r2.path,avoid3,req,ratio,7);const trial=routeAll(pts,avoid3,m.maxExpand||3000000);if(trial.status==='ok'){r3=trial;break}}if(r3)routes.push(pack(r3))}}
+  }
+  const transfers=routes.map(r=>r.path.buffer);self.postMessage({type:'result',status:'ok',routes},transfers)
+}catch(err){self.postMessage({type:'result',status:'error',message:String(err&&err.message||err)})}}
 `;
   const PK1_DISPLAY_TRANSFORM = { m00:1.3811020352, m01:-1.1998330080000001, m10:0.7361070080000001, m11:0.568297248, tx:2225.7348256, ty:-536.8040288000001, im00:0.34068904150606916, im01:0.7192889969139248, im10:-0.44128946934724644, im11:0.8279581332661488 };
 
@@ -137,8 +165,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       'exportMenuBtn', 'exportMenu', 'exportViewPngBtn', 'exportViewerBtn',
       'helpBtn', 'toggleInspectorBtn', 'closeInspectorBtn', 'mapCanvas', 'stageWrap',
       'emptyState', 'emptyLoadMapBtn', 'toast', 'undoBtn', 'redoBtn', 'deleteBtn',
-      'inspector', 'noSelection', 'propertyForm', 'propLabel', 'propDescription', 'propColor',
-      'propOpacity', 'propSize', 'propLineWidth', 'propPhase', 'duplicateBtn', 'bringFrontBtn',
+      'inspector', 'propertySection', 'propertyForm', 'propLabel', 'propSize', 'propLabelSize',
+      'propLineWidth', 'propSymbolVisible', 'symbolVisibleField', 'propPhase', 'duplicateBtn', 'bringFrontBtn',
       'deleteObjectBtn', 'phaseFilter', 'calibrationBtn', 'calibrationSummary', 'layerList',
       'objectCount', 'gamePosition', 'fitBtn', 'zoomOutBtn', 'zoomDisplay',
       'zoomInBtn', 'mapFileInput', 'projectFileInput', 'helpDialog', 'calibrationDialog',
@@ -149,7 +177,6 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       'gateBlockClearBtn', 'gateBlockAllBtn', 'gateFilter', 'gateBlockList',
       'showGateMarkers', 'showCityMarkers', 'showGateLabels', 'showCityLabels', 'routeResult',
       'showAltRoute2', 'showAltRoute3',
-      'timelineAddBtn', 'timelinePrevBtn', 'timelineNextBtn', 'timelineCurrentLabel', 'timelineList',
       'placeContextMenu', 'placeContextTitle', 'placeContextRouteBtn', 'placeContextCopyBtn', 'placeContextGateBtn'
     ];
     for (const id of ids) refs[id] = document.getElementById(id);
@@ -224,9 +251,6 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     refs.showAltRoute2.addEventListener('change', alternateRouteChanged);
     refs.showAltRoute3.addEventListener('change', alternateRouteChanged);
     refs.scenarioButtons.forEach(btn => btn.addEventListener('click', () => switchScenario(btn.dataset.scenario)));
-    refs.timelineAddBtn.addEventListener('click', addTimelineItem);
-    refs.timelinePrevBtn.addEventListener('click', () => stepTimeline(-1));
-    refs.timelineNextBtn.addEventListener('click', () => stepTimeline(1));
     refs.placeContextRouteBtn.addEventListener('click', contextAddRoutePoint);
     refs.placeContextCopyBtn.addEventListener('click', contextCopyCoordinate);
     refs.placeContextGateBtn.addEventListener('click', contextToggleGateBlock);
@@ -263,11 +287,9 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
 
     const inputs = [
       [refs.propLabel, 'label', v => v],
-      [refs.propDescription, 'description', v => v],
-      [refs.propColor, 'color', v => v],
-      [refs.propOpacity, 'opacity', v => Number(v) / 100],
-      [refs.propSize, 'size', v => Number(v)],
-      [refs.propLineWidth, 'lineWidth', v => Number(v)],
+      [refs.propSize, 'size', v => clampNumber(v, 8, 300, 28)],
+      [refs.propLabelSize, 'labelSize', v => clampNumber(v, 8, 120, 10)],
+      [refs.propLineWidth, 'lineWidth', v => clampNumber(v, 1, 50, 3)],
       [refs.propPhase, 'phase', v => v]
     ];
 
@@ -282,6 +304,17 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       });
       el.addEventListener('change', finishPropertyEdit);
     });
+
+    refs.propSymbolVisible.addEventListener('change', () => {
+      const obj = getSelected();
+      if (!obj || obj.type === 'text') return;
+      if (!propertySnapshot) propertySnapshot = serializeProject();
+      obj.symbolVisible = refs.propSymbolVisible.checked;
+      dirty = true;
+      renderLayerList();
+      requestRender();
+      finishPropertyEdit();
+    });
   }
 
   function createProject() {
@@ -295,8 +328,6 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       background: { ...PK1_BACKGROUND },
       calibration: JSON.parse(JSON.stringify(PK1_CALIBRATION)),
       routePlanner: defaultRoutePlanner(),
-      timeline: [],
-      activeTimelineIndex: -1,
       activeScenario: 'A',
       scenarios: {},
       objects: []
@@ -313,7 +344,9 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       color: meta.color,
       opacity: type === 'area' ? 0.45 : 1,
       size: meta.size,
+      labelSize: type === 'text' ? meta.size : 10,
       lineWidth: meta.lineWidth,
+      symbolVisible: true,
       phase: '共通',
       hidden: false,
       x: data.x || 0,
@@ -393,6 +426,13 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     context.stroke();
   }
 
+  function objectLabelAnchor(obj) {
+    if (obj.type === 'arrow' || obj.type === 'defense' || obj.type === 'area') {
+      return { x: (obj.x + obj.x2) / 2, y: (obj.y + obj.y2) / 2 };
+    }
+    return { x: obj.x, y: obj.y };
+  }
+
   function drawObject(context, obj, selected, preview = false) {
     context.save();
     context.globalAlpha = Math.max(0.05, Math.min(1, obj.opacity == null ? 1 : obj.opacity)) * (preview ? 0.75 : 1);
@@ -401,6 +441,14 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     context.strokeStyle = obj.color;
     context.fillStyle = obj.color;
     context.lineWidth = obj.lineWidth || 4;
+
+    if (obj.symbolVisible === false && obj.type !== 'text') {
+      const anchor = objectLabelAnchor(obj);
+      drawLabel(context, obj.label, anchor.x, anchor.y, obj.labelSize || 10);
+      if (selected) drawSelection(context, obj);
+      context.restore();
+      return;
+    }
 
     switch (obj.type) {
       case 'ally':
@@ -466,7 +514,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     context.textBaseline = 'middle';
     context.fillText(obj.type === 'ally' ? '自' : '敵', 0, 1);
     context.restore();
-    drawLabel(context, obj.label, obj.x, obj.y + r + obj.size * 0.22, obj.size * 0.28);
+    drawLabel(context, obj.label, obj.x, obj.y + r + obj.size * 0.22, obj.labelSize || 10);
   }
 
   function drawGarrison(context, obj) {
@@ -494,7 +542,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     context.textBaseline = 'middle';
     context.fillText('駐', 0, 0);
     context.restore();
-    drawLabel(context, obj.label, obj.x, obj.y + s * 0.75, s * 0.27);
+    drawLabel(context, obj.label, obj.x, obj.y + s * 0.75, obj.labelSize || 10);
   }
 
   function drawCamp(context, obj) {
@@ -521,7 +569,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     context.lineTo(s * 0.28, s * 0.42);
     context.stroke();
     context.restore();
-    drawLabel(context, obj.label, obj.x, obj.y + s * 0.68, s * 0.27);
+    drawLabel(context, obj.label, obj.x, obj.y + s * 0.68, obj.labelSize || 10);
   }
 
   function drawFort(context, obj) {
@@ -543,7 +591,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     context.clearRect(-s * 0.1, s * 0.12, s * 0.2, s * 0.31);
     context.strokeRect(-s * 0.1, s * 0.12, s * 0.2, s * 0.31);
     context.restore();
-    drawLabel(context, obj.label, obj.x, obj.y + s * 0.72, s * 0.27);
+    drawLabel(context, obj.label, obj.x, obj.y + s * 0.72, obj.labelSize || 10);
   }
 
   function drawMapPoint(context, obj) {
@@ -594,7 +642,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     context.textBaseline = 'middle';
     context.fillText(symbol, 0, obj.type === 'bridge' ? -s * 0.02 : 1);
     context.restore();
-    drawLabel(context, obj.label, obj.x, obj.y + s * 0.74, s * 0.27);
+    drawLabel(context, obj.label, obj.x, obj.y + s * 0.74, obj.labelSize || 10);
   }
 
   function drawTarget(context, obj) {
@@ -613,11 +661,11 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     context.stroke();
     context.beginPath(); context.arc(0, 0, Math.max(3, r * 0.13), 0, Math.PI * 2); context.fill();
     context.restore();
-    drawLabel(context, obj.label, obj.x, obj.y + s * 0.75, s * 0.27);
+    drawLabel(context, obj.label, obj.x, obj.y + s * 0.75, obj.labelSize || 10);
   }
 
   function drawTextNote(context, obj) {
-    const fontSize = Math.max(12, obj.size);
+    const fontSize = Math.max(8, obj.labelSize || obj.size);
     context.save();
     context.font = `700 ${fontSize}px sans-serif`;
     context.textAlign = 'left';
@@ -664,7 +712,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     context.fill();
     context.restore();
 
-    drawLabel(context, obj.label, (obj.x + obj.x2) / 2, (obj.y + obj.y2) / 2 - obj.size * 0.48, obj.size * 0.3);
+    drawLabel(context, obj.label, (obj.x + obj.x2) / 2, (obj.y + obj.y2) / 2 - obj.size * 0.48, obj.labelSize || 10);
   }
 
   function drawDefenseLine(context, obj) {
@@ -697,7 +745,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     }
     context.stroke();
     context.restore();
-    drawLabel(context, obj.label, (obj.x + obj.x2) / 2 + px * obj.size * 0.58, (obj.y + obj.y2) / 2 + py * obj.size * 0.58, obj.size * 0.29);
+    drawLabel(context, obj.label, (obj.x + obj.x2) / 2 + px * obj.size * 0.58, (obj.y + obj.y2) / 2 + py * obj.size * 0.58, obj.labelSize || 10);
   }
 
   function drawArea(context, obj) {
@@ -713,14 +761,14 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     context.setLineDash([obj.size * 0.34, obj.size * 0.2]);
     context.strokeRect(x, y, w, h);
     context.setLineDash([]);
-    drawLabel(context, obj.label, x + w / 2, y + Math.max(obj.size * 0.38, 18), obj.size * 0.32);
+    drawLabel(context, obj.label, x + w / 2, y + Math.max(obj.size * 0.38, 18), obj.labelSize || 10);
     context.restore();
   }
 
   function drawLabel(context, text, x, y, fontSize) {
     if (!text) return;
     const value = String(text);
-    const fs = Math.max(10, fontSize || 14);
+    const fs = Math.max(8, fontSize || 14);
     context.save();
     context.font = `700 ${fs}px sans-serif`;
     context.textAlign = 'center';
@@ -839,8 +887,9 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       };
     }
     if (obj.type === 'text') {
-      const width = Math.max(obj.size * 3.2, String(obj.label || '').length * obj.size * 0.65);
-      return { x: obj.x - obj.size * 0.4, y: obj.y - obj.size * 0.35, w: width, h: obj.size * 1.8 };
+      const fs = Math.max(8, obj.labelSize || obj.size);
+      const width = Math.max(fs * 3.2, String(obj.label || '').length * fs * 0.65);
+      return { x: obj.x - fs * 0.4, y: obj.y - fs * 0.35, w: width, h: fs * 1.8 };
     }
     const r = obj.size * 0.72;
     return { x: obj.x - r, y: obj.y - r, w: r * 2, h: r * 2 };
@@ -980,7 +1029,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
         obj.x = left; obj.y = top; obj.x2 = right; obj.y2 = bottom;
       } else {
         const radius = Math.max(5, Math.max(Math.abs(world.x - o.x), Math.abs(world.y - o.y)));
-        obj.size = Math.max(10, Math.min(500, radius / 0.72));
+        if (obj.type === 'text') obj.labelSize = Math.max(8, Math.min(120, radius / 0.72));
+        else obj.size = Math.max(10, Math.min(500, radius / 0.72));
       }
       dirty = true;
       syncSelectionUI();
@@ -1156,17 +1206,19 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
 
   function syncSelectionUI() {
     const obj = getSelected();
-    if (refs.noSelection) refs.noSelection.hidden = true;
-    refs.propertyForm.hidden = !obj;
+    refs.propertySection.hidden = !obj;
     refs.inspector.classList.toggle('has-selection', !!obj);
     if (!obj) return;
     refs.propLabel.value = obj.label || '';
-    refs.propDescription.value = obj.description || '';
-    refs.propColor.value = normalizeHex(obj.color, TYPE_META[obj.type].color);
-    refs.propOpacity.value = Math.round((obj.opacity == null ? 1 : obj.opacity) * 100);
-    refs.propSize.value = obj.size;
-    refs.propLineWidth.value = obj.lineWidth;
+    refs.propSize.value = Math.round(obj.size || TYPE_META[obj.type].size);
+    refs.propLabelSize.value = Math.round(obj.labelSize || (obj.type === 'text' ? obj.size : 10));
+    refs.propLineWidth.value = Math.round(obj.lineWidth || TYPE_META[obj.type].lineWidth);
     refs.propPhase.value = obj.phase || '共通';
+    refs.propSymbolVisible.checked = obj.symbolVisible !== false;
+    const noSymbol = obj.type === 'text';
+    refs.propSymbolVisible.disabled = noSymbol;
+    refs.symbolVisibleField.classList.toggle('disabled', noSymbol);
+    refs.propSize.disabled = noSymbol;
   }
 
   function syncObjectUI() {
@@ -1184,8 +1236,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     for (const key of SCENARIO_KEYS) {
       if (!project.scenarios[key]) {
         project.scenarios[key] = key === activeScenario ? {
-          objects: cloneJson(project.objects || []), routePlanner: cloneJson(ensureRoutePlanner()), phaseFilter,
-          timeline: cloneJson(project.timeline || []), activeTimelineIndex: Number(project.activeTimelineIndex ?? -1)
+          objects: cloneJson(project.objects || []), routePlanner: cloneJson(ensureRoutePlanner()), phaseFilter
         } : emptyScenarioState();
       }
     }
@@ -1197,9 +1248,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     project.scenarios[activeScenario] = {
       objects: cloneJson(project.objects || []),
       routePlanner: cloneJson(ensureRoutePlanner()),
-      phaseFilter,
-      timeline: cloneJson(project.timeline || []),
-      activeTimelineIndex: Number(project.activeTimelineIndex ?? -1)
+      phaseFilter
     };
     project.activeScenario = activeScenario;
   }
@@ -1211,8 +1260,6 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     const s = normalizeScenarioState(project.scenarios[key] || emptyScenarioState());
     project.objects = cloneJson(s.objects);
     project.routePlanner = normalizeRoutePlanner(s.routePlanner);
-    project.timeline = normalizeTimeline(s.timeline);
-    project.activeTimelineIndex = Math.max(-1, Math.min(project.timeline.length - 1, s.activeTimelineIndex));
     phaseFilter = s.phaseFilter;
     project.activeScenario = key;
     selectedId = null;
@@ -1230,64 +1277,6 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     });
   }
 
-  function addTimelineItem() {
-    if (!Array.isArray(project.timeline)) project.timeline = [];
-    const phase = ['第1段階','第2段階','第3段階','予備'][Math.min(project.timeline.length, 3)] || '第1段階';
-    project.timeline.push({ time: '', title: '', phase });
-    project.activeTimelineIndex = project.timeline.length - 1;
-    dirty = true;
-    renderTimeline();
-  }
-
-  function activateTimelineItem(index) {
-    const items = project.timeline || [];
-    if (index < 0 || index >= items.length) return;
-    project.activeTimelineIndex = index;
-    phaseFilter = items[index].phase || 'すべて';
-    refs.phaseFilter.value = phaseFilter;
-    dirty = true;
-    renderTimeline(); renderLayerList(); requestRender();
-  }
-
-  function stepTimeline(delta) {
-    const items = project.timeline || [];
-    if (!items.length) return;
-    let idx = Number(project.activeTimelineIndex ?? -1);
-    if (idx < 0) idx = delta > 0 ? 0 : items.length - 1;
-    else idx = Math.max(0, Math.min(items.length - 1, idx + delta));
-    activateTimelineItem(idx);
-  }
-
-  function renderTimeline() {
-    if (!refs.timelineList) return;
-    const items = project.timeline || [];
-    refs.timelineList.textContent = '';
-    const active = Number(project.activeTimelineIndex ?? -1);
-    refs.timelineCurrentLabel.textContent = active >= 0 && items[active]
-      ? `${items[active].time || '--:--'} ${items[active].title || items[active].phase}` : '工程なし';
-    refs.timelinePrevBtn.disabled = !items.length || active === 0;
-    refs.timelineNextBtn.disabled = !items.length || active === items.length - 1;
-    if (!items.length) {
-      const empty = document.createElement('div'); empty.className = 'timeline-empty'; empty.textContent = '工程を追加すると時刻順の作戦進行を管理できます。';
-      refs.timelineList.appendChild(empty); return;
-    }
-    items.forEach((item, index) => {
-      const row = document.createElement('div'); row.className = 'timeline-item' + (index === active ? ' active' : '');
-      const time = document.createElement('input'); time.type = 'time'; time.value = item.time || ''; time.className = 'timeline-time';
-      const title = document.createElement('input'); title.type = 'text'; title.value = item.title || ''; title.maxLength = 60; title.placeholder = '工程名'; title.className = 'timeline-title';
-      const phase = document.createElement('select'); phase.className = 'timeline-phase';
-      for (const p of PHASES) { const op=document.createElement('option'); op.value=p; op.textContent=p; phase.appendChild(op); } phase.value = item.phase;
-      const go = document.createElement('button'); go.type='button'; go.className='timeline-go'; go.textContent='表示';
-      const del = document.createElement('button'); del.type='button'; del.className='timeline-delete'; del.textContent='×'; del.title='削除';
-      time.addEventListener('input',()=>{ item.time=time.value; dirty=true; if(index===active) refs.timelineCurrentLabel.textContent=`${item.time||'--:--'} ${item.title||item.phase}`; });
-      title.addEventListener('input',()=>{ item.title=title.value; dirty=true; if(index===active) refs.timelineCurrentLabel.textContent=`${item.time||'--:--'} ${item.title||item.phase}`; });
-      phase.addEventListener('change',()=>{ item.phase=phase.value; dirty=true; if(index===active) activateTimelineItem(index); });
-      go.addEventListener('click',()=>activateTimelineItem(index));
-      del.addEventListener('click',()=>{ project.timeline.splice(index,1); if(project.activeTimelineIndex > index) project.activeTimelineIndex--; else if(project.activeTimelineIndex >= project.timeline.length) project.activeTimelineIndex=project.timeline.length-1; dirty=true; renderTimeline(); });
-      row.append(time,title,phase,go,del); refs.timelineList.appendChild(row);
-    });
-  }
-
   function syncAllUI() {
     refs.projectName.value = project.name || '新規作戦';
     refs.emptyState.hidden = !!backgroundImage;
@@ -1296,7 +1285,6 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     if (refs.calibrationSummary) updateCalibrationSummary();
     syncScenarioUI();
     if (refs.phaseFilter) refs.phaseFilter.value = phaseFilter;
-    renderTimeline();
     updateHistoryButtons();
     refs.deleteBtn.disabled = !selectedId;
     syncRouteUI();
@@ -1589,7 +1577,9 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
         color: normalizeHex(o.color, base.color),
         opacity: clampNumber(o.opacity, 0.05, 1, base.opacity),
         size: clampNumber(o.size, 8, 300, base.size),
+        labelSize: clampNumber(o.labelSize, 8, 120, o.type === 'text' ? clampNumber(o.size, 8, 120, base.size) : 10),
         lineWidth: clampNumber(o.lineWidth, 1, 50, base.lineWidth),
+        symbolVisible: o.symbolVisible !== false,
         phase: PHASES.includes(o.phase) ? o.phase : '共通',
         hidden: Boolean(o.hidden),
         x: clampNumber(o.x, -1000000, 1000000, 0),
@@ -1600,17 +1590,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     });
   }
 
-  function normalizeTimeline(value) {
-    if (!Array.isArray(value)) return [];
-    return value.slice(0, 30).map(item => ({
-      time: /^\d{2}:\d{2}$/.test(String(item?.time || '')) ? String(item.time) : '',
-      title: String(item?.title || '').slice(0, 60),
-      phase: PHASES.includes(item?.phase) ? item.phase : '第1段階'
-    }));
-  }
-
   function emptyScenarioState() {
-    return { objects: [], routePlanner: defaultRoutePlanner(), phaseFilter: 'すべて', timeline: [], activeTimelineIndex: -1 };
+    return { objects: [], routePlanner: defaultRoutePlanner(), phaseFilter: 'すべて' };
   }
 
   function normalizeScenarioState(raw) {
@@ -1618,9 +1599,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     return {
       objects: normalizeObjectList(s.objects),
       routePlanner: normalizeRoutePlanner(s.routePlanner),
-      phaseFilter: ['すべて', ...PHASES].includes(s.phaseFilter) ? s.phaseFilter : 'すべて',
-      timeline: normalizeTimeline(s.timeline),
-      activeTimelineIndex: Number.isInteger(Number(s.activeTimelineIndex)) ? Number(s.activeTimelineIndex) : -1
+      phaseFilter: ['すべて', ...PHASES].includes(s.phaseFilter) ? s.phaseFilter : 'すべて'
     };
   }
 
@@ -1635,8 +1614,6 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       background: data.background || { ...PK1_BACKGROUND },
       calibration: data.calibration || JSON.parse(JSON.stringify(PK1_CALIBRATION)),
       routePlanner: normalizeRoutePlanner(data.routePlanner),
-      timeline: normalizeTimeline(data.timeline),
-      activeTimelineIndex: Number.isInteger(Number(data.activeTimelineIndex)) ? Number(data.activeTimelineIndex) : -1,
       activeScenario: SCENARIO_KEYS.includes(data.activeScenario) ? data.activeScenario : 'A',
       scenarios: {},
       objects: normalizeObjectList(data.objects)
@@ -1647,17 +1624,13 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       else if (key === normalized.activeScenario) normalized.scenarios[key] = {
         objects: JSON.parse(JSON.stringify(normalized.objects)),
         routePlanner: normalizeRoutePlanner(normalized.routePlanner),
-        phaseFilter: 'すべて',
-        timeline: normalizeTimeline(normalized.timeline),
-        activeTimelineIndex: normalized.activeTimelineIndex
+        phaseFilter: 'すべて'
       };
       else normalized.scenarios[key] = emptyScenarioState();
     }
     const active = normalized.scenarios[normalized.activeScenario];
     normalized.objects = JSON.parse(JSON.stringify(active.objects));
     normalized.routePlanner = normalizeRoutePlanner(active.routePlanner);
-    normalized.timeline = normalizeTimeline(active.timeline);
-    normalized.activeTimelineIndex = active.activeTimelineIndex;
     return normalized;
   }
 
@@ -1879,35 +1852,49 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     return `<!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${escapeHtml(data.name)}｜作戦図</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0c0e11;color:#eef1f6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",Meiryo,sans-serif}body{display:grid;grid-template-rows:54px 1fr 30px}header{display:flex;align-items:center;gap:12px;padding:7px 12px;background:#171a20;border-bottom:1px solid #323844}h1{margin:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}header .spacer{flex:1}button,select{height:34px;border:1px solid #414957;border-radius:6px;background:#262b35;color:#eef1f6;padding:0 9px;font:inherit;font-size:12px}button{cursor:pointer}.stage{position:relative;min-height:0}canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}.info{display:none;position:absolute;left:14px;bottom:14px;max-width:min(440px,calc(100% - 28px));padding:11px 13px;border:1px solid #4b5564;border-radius:8px;background:rgba(22,26,32,.95);box-shadow:0 12px 35px rgba(0,0,0,.4)}.info.show{display:block}.info strong{font-size:13px}.info p{margin:5px 0 0;color:#b8c0cc;font-size:12px;line-height:1.6;white-space:pre-wrap}.info button{position:absolute;right:5px;top:4px;width:28px;height:28px;padding:0;border:0;background:transparent}footer{display:flex;align-items:center;gap:12px;padding:0 10px;background:#15181d;border-top:1px solid #323844;color:#aab2c0;font-size:10px}footer .spacer{flex:1}@media(max-width:620px){header{gap:5px;padding:6px}h1{font-size:13px}header select{max-width:120px}header button{padding:0 7px}}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0c0e11;color:#eef1f6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",Meiryo,sans-serif}body{display:grid;grid-template-rows:54px 1fr 30px}header{display:flex;align-items:center;gap:12px;padding:7px 12px;background:#171a20;border-bottom:1px solid #323844}h1{margin:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}header .spacer{flex:1}button,select{height:34px;border:1px solid #414957;border-radius:6px;background:#262b35;color:#eef1f6;padding:0 9px;font:inherit;font-size:12px}button{cursor:pointer}.stage{position:relative;min-height:0}canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}footer{display:flex;align-items:center;gap:12px;padding:0 10px;background:#15181d;border-top:1px solid #323844;color:#aab2c0;font-size:10px}footer .spacer{flex:1}@media(max-width:620px){header{gap:5px;padding:6px}h1{font-size:13px}header select{max-width:120px}header button{padding:0 7px}}
 </style></head><body>
 <header><h1>${escapeHtml(data.name)}</h1><span class="spacer"></span><select id="phase"><option>すべて</option><option>共通</option><option>第1段階</option><option>第2段階</option><option>第3段階</option><option>予備</option></select><button id="fit">全体表示</button><button id="zin">＋</button><button id="zout">−</button></header>
-<div class="stage" id="stage"><canvas id="c"></canvas><div class="info" id="info"><button id="close">×</button><strong id="infoTitle"></strong><p id="infoText"></p></div></div>
+<div class="stage" id="stage"><canvas id="c"></canvas></div>
 <footer><span id="game">ゲーム座標: --</span><span class="spacer"></span><span id="zoom">100%</span></footer>
 <script>
 'use strict';
 const project=${safeProject};
 const reference=${safeReference};
-const c=document.getElementById('c'),x=c.getContext('2d'),stage=document.getElementById('stage');let img=new Image(),v={s:1,x:0,y:0},drag=null,phase=project.exportPhaseFilter||'すべて';
-const PK1T=project.background&&project.background.builtin?{m00:1.3811020352,m01:-1.1998330080000001,m10:0.7361070080000001,m11:0.568297248,tx:2225.7348256,ty:-536.8040288000001,im00:0.34068904150606916,im01:0.7192889969139248,im10:-0.44128946934724644,im11:0.8279581332661488}:null;
-function gv(gx,gy){if(!PK1T)return{x:gx,y:gy};return{x:PK1T.m00*gx+PK1T.m01*gy+PK1T.tx,y:PK1T.m10*gx+PK1T.m11*gy+PK1T.ty};}
-function wg(wx,wy){if(!PK1T)return null;let dx=wx-PK1T.tx,dy=wy-PK1T.ty;return{x:PK1T.im00*dx+PK1T.im01*dy,y:PK1T.im10*dx+PK1T.im11*dy};}
-const $=id=>document.getElementById(id);img.onload=()=>{resize();fit();draw()};img.src=project.background.dataUrl||project.background.src;
-new ResizeObserver(()=>{resize();draw()}).observe(stage);function resize(){let r=stage.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2.5);c.width=Math.max(1,Math.floor(r.width*d));c.height=Math.max(1,Math.floor(r.height*d));c.style.width=r.width+'px';c.style.height=r.height+'px';c.d=d}
-function vis(o){return !o.hidden&&(phase==='すべて'||(phase==='共通'?o.phase==='共通':o.phase==='共通'||o.phase===phase))}
-function routeLine(path,color,dash=[]){if(!path||path.length<2)return;x.save();x.strokeStyle=color;x.lineWidth=Math.max(1.2,3.2/v.s);x.lineJoin='round';x.lineCap='round';x.setLineDash(dash.map(n=>n/v.s));x.beginPath();path.forEach((idx,i)=>{let gx=idx%2000+.5,gy=Math.floor(idx/2000)+.5,p=gv(gx,gy);if(i)x.lineTo(p.x,p.y);else x.moveTo(p.x,p.y)});x.stroke();x.restore()}
-function refLayers(){let rp=project.routePlanner||{},items=[];if(rp.showGateLabels!==false)(reference.gates||[]).forEach(o=>items.push({o,kind:'gate',priority:2000+Number(o.level||0)}));if(rp.showCityLabels!==false)(reference.cities||[]).forEach(o=>items.push({o,kind:'city',priority:1000+Number(o.level||0)}));function marker(o,fill,stroke,rp){let p=gv(Number(o.center_x),Number(o.center_y)),r=Math.max(2.2,rp/v.s);x.beginPath();x.arc(p.x,p.y,r,0,Math.PI*2);x.fillStyle=fill;x.fill();x.strokeStyle=stroke;x.lineWidth=Math.max(.7,1/v.s);x.stroke()}if(rp.showGates!==false)(reference.gates||[]).forEach(o=>marker(o,'#f2a51a','#5d3a00',4));if(rp.showCities===true)(reference.cities||[]).forEach(o=>marker(o,'#7b201d','#f3d7ca',3.2));items.sort((a,b)=>b.priority-a.priority||Number(a.o.id)-Number(b.o.id));let placed=[],cand=[[0,-15],[0,15],[16,0],[-16,0],[15,-13],[-15,-13],[15,13],[-15,13],[0,-28],[0,28]];x.save();x.textAlign='center';x.textBaseline='middle';for(let it of items){let p=gv(Number(it.o.center_x),Number(it.o.center_y)),fs=Math.max(8.5,11/v.s);x.font='700 '+fs+'px "Noto Sans JP",sans-serif';let tw=x.measureText(it.o.name).width,chosen=null;for(let cnd of cand){let cx=p.x+cnd[0]/v.s,cy=p.y+cnd[1]/v.s,box={l:cx-tw/2-3/v.s,r:cx+tw/2+3/v.s,t:cy-fs*.7,b:cy+fs*.7};if(!placed.some(b=>!(box.r<b.l||box.l>b.r||box.b<b.t||box.t>b.b))){chosen={cx,cy,box};break}}if(!chosen)continue;placed.push(chosen.box);x.lineJoin='round';x.miterLimit=2;x.strokeStyle='rgba(12,22,31,.96)';x.lineWidth=3.2/v.s;x.strokeText(it.o.name,chosen.cx,chosen.cy);x.fillStyle=it.kind==='gate'?'#ffd166':'#f8fbff';x.fillText(it.o.name,chosen.cx,chosen.cy)}x.restore()}
-function draw(){let d=c.d||1,w=c.clientWidth,h=c.clientHeight;x.setTransform(d,0,0,d,0,0);x.fillStyle='#0c0e11';x.fillRect(0,0,w,h);x.save();x.translate(v.x,v.y);x.scale(v.s,v.s);x.drawImage(img,0,0);refLayers();let rp=project.routePlanner||{};routeLine(rp.path,'#e43b2e');if(rp.showAlt2&&rp.altPaths&&rp.altPaths[0])routeLine(rp.altPaths[0],'#22b8cf',[8,5]);if(rp.showAlt3&&rp.altPaths&&rp.altPaths[1])routeLine(rp.altPaths[1],'#b86cff',[3,5]);if(rp.points){rp.points.forEach((p,i)=>{let q=gv(p[0]+.5,p[1]+.5);x.save();x.fillStyle=i===0?'#23b967':(i===rp.points.length-1?'#e13d36':'#ffd54d');x.strokeStyle='#fff';x.lineWidth=Math.max(1,1.4/v.s);x.beginPath();x.arc(q.x,q.y,Math.max(3,5.8/v.s),0,Math.PI*2);x.fill();x.stroke();x.restore()})}project.objects.forEach(o=>{if(vis(o))obj(x,o)});x.restore();$('zoom').textContent=Math.round(v.s*100)+'%'}
+const c=document.getElementById('c'),ctx=c.getContext('2d'),stage=document.getElementById('stage');
+let img=new Image(),view={s:1,x:0,y:0},drag=null,phase=project.exportPhaseFilter||'すべて';
+const T=project.background&&project.background.builtin?{m00:1.3811020352,m01:-1.1998330080000001,m10:0.7361070080000001,m11:0.568297248,tx:2225.7348256,ty:-536.8040288000001,im00:0.34068904150606916,im01:0.7192889969139248,im10:-0.44128946934724644,im11:0.8279581332661488}:null;
+const $=id=>document.getElementById(id);
+function gw(gx,gy){if(!T)return{x:gx,y:gy};return{x:T.m00*gx+T.m01*gy+T.tx,y:T.m10*gx+T.m11*gy+T.ty}}
+function wg(wx,wy){if(!T)return null;let dx=wx-T.tx,dy=wy-T.ty;return{x:T.im00*dx+T.im01*dy,y:T.im10*dx+T.im11*dy}}
 function rr(q,a,b,w,h,r){r=Math.min(r,w/2,h/2);q.beginPath();q.moveTo(a+r,b);q.arcTo(a+w,b,a+w,b+h,r);q.arcTo(a+w,b+h,a,b+h,r);q.arcTo(a,b+h,a,b,r);q.arcTo(a,b,a+w,b,r);q.closePath()}
-function label(q,t,a,b,fs){if(!t)return;fs=Math.max(10,fs||14);q.save();q.font='700 '+fs+'px sans-serif';q.textAlign='center';q.textBaseline='middle';let w=q.measureText(t).width+fs*.8,h=fs*1.5;q.fillStyle='rgba(9,11,14,.82)';rr(q,a-w/2,b-h/2,w,h,fs*.28);q.fill();q.strokeStyle='rgba(255,255,255,.2)';q.lineWidth=Math.max(1,1/v.s);q.stroke();q.fillStyle='#fff';q.fillText(t,a,b);q.restore()}
-function obj(q,o){q.save();q.globalAlpha=Math.max(.05,Math.min(1,o.opacity==null?1:o.opacity));q.lineCap='round';q.lineJoin='round';q.strokeStyle=o.color;q.fillStyle=o.color;q.lineWidth=o.lineWidth||4;let s=o.size,r=s/2,dx=o.x2-o.x,dy=o.y2-o.y,l=Math.hypot(dx,dy),ux,uy,px,py;if(o.type==='ally'||o.type==='enemy'){q.beginPath();q.arc(o.x,o.y,r,0,Math.PI*2);q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,o.lineWidth*.55);q.stroke();q.fillStyle='#fff';q.font='800 '+Math.max(12,s*.35)+'px sans-serif';q.textAlign='center';q.textBaseline='middle';q.fillText(o.type==='ally'?'自':'敵',o.x,o.y+1);label(q,o.label,o.x,o.y+r+s*.22,s*.28)}else if(o.type==='garrison'){q.translate(o.x,o.y);q.beginPath();q.moveTo(0,-s*.5);q.lineTo(s*.38,-s*.28);q.lineTo(s*.31,s*.22);q.quadraticCurveTo(0,s*.55,0,s*.55);q.quadraticCurveTo(0,s*.55,-s*.31,s*.22);q.lineTo(-s*.38,-s*.28);q.closePath();q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,o.lineWidth*.5);q.stroke();q.fillStyle='#fff';q.font='800 '+s*.28+'px sans-serif';q.textAlign='center';q.textBaseline='middle';q.fillText('駐',0,0);q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.75,s*.27)}else if(o.type==='camp'){q.translate(o.x,o.y);q.beginPath();q.moveTo(0,-s*.5);q.lineTo(s*.52,s*.42);q.lineTo(-s*.52,s*.42);q.closePath();q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,o.lineWidth*.5);q.stroke();q.beginPath();q.moveTo(0,-s*.5);q.lineTo(0,s*.42);q.moveTo(-s*.28,s*.42);q.lineTo(0,-s*.5);q.lineTo(s*.28,s*.42);q.stroke();q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.68,s*.27)}else if(o.type==='fort'){q.translate(o.x,o.y);q.beginPath();q.rect(-s*.45,-s*.25,s*.9,s*.68);q.rect(-s*.48,-s*.48,s*.22,s*.28);q.rect(-s*.11,-s*.48,s*.22,s*.28);q.rect(s*.26,-s*.48,s*.22,s*.28);q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,o.lineWidth*.48);q.stroke();q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.72,s*.27)}else if(o.type==='relocate'){q.translate(o.x,o.y);rr(q,-r,-r,s,s,s*.12);q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,o.lineWidth*.5);q.stroke();q.fillStyle='#fff';q.font='800 '+s*.34+'px sans-serif';q.textAlign='center';q.textBaseline='middle';q.fillText('遷',0,1);q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.74,s*.27)}else if(o.type==='target'){q.translate(o.x,o.y);r=s*.45;q.lineWidth=Math.max(3,o.lineWidth);q.beginPath();q.arc(0,0,r,0,Math.PI*2);q.stroke();q.beginPath();q.arc(0,0,r*.52,0,Math.PI*2);q.stroke();q.beginPath();q.moveTo(-r*1.25,0);q.lineTo(r*1.25,0);q.moveTo(0,-r*1.25);q.lineTo(0,r*1.25);q.stroke();q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.75,s*.27)}else if(['castle','gate','bridge','station'].includes(o.type)){q.translate(o.x,o.y);r=s*.5;q.beginPath();if(o.type==='gate'){q.moveTo(0,-r);q.lineTo(r,0);q.lineTo(0,r);q.lineTo(-r,0);q.closePath()}else if(o.type==='station'){q.moveTo(-r*.82,-r);q.lineTo(r*.82,-r);q.lineTo(r,0);q.lineTo(r*.82,r);q.lineTo(-r*.82,r);q.lineTo(-r,0);q.closePath()}else if(o.type==='bridge'){rr(q,-r,-r*.58,s,s*.82,s*.12)}else{rr(q,-r,-r,s,s,s*.12)}q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,o.lineWidth*.5);q.stroke();if(o.type==='bridge'){q.beginPath();q.moveTo(-r*.72,-r*.16);q.lineTo(r*.72,-r*.16);q.moveTo(-r*.72,r*.16);q.lineTo(r*.72,r*.16);q.stroke()}q.fillStyle='#fff';q.font='800 '+s*.34+'px sans-serif';q.textAlign='center';q.textBaseline='middle';q.fillText(({castle:'城',gate:'関',bridge:'橋',station:'駅'})[o.type],0,o.type==='bridge'?-s*.02:1);q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.74,s*.27)}else if(o.type==='text'){let fs=Math.max(12,s),lines=String(o.label||'メモ').split(/\\n/).slice(0,6);q.font='700 '+fs+'px sans-serif';let w=Math.max(...lines.map(t=>q.measureText(t||' ').width))+fs*.9,h=lines.length*fs*1.25+fs*.55;q.fillStyle='rgba(10,12,15,.78)';rr(q,o.x-fs*.35,o.y-fs*.28,w,h,fs*.25);q.fill();q.strokeStyle=o.color;q.lineWidth=Math.max(2,o.lineWidth);q.stroke();q.fillStyle=o.color;q.textAlign='left';q.textBaseline='top';lines.forEach((t,i)=>q.fillText(t,o.x,o.y+i*fs*1.25))}else if(o.type==='arrow'&&l>1){ux=dx/l;uy=dy/l;let hd=Math.min(Math.max(s,o.lineWidth*4),l*.38),bx=o.x2-ux*hd,by=o.y2-uy*hd;px=-uy;py=ux;q.beginPath();q.moveTo(o.x,o.y);q.lineTo(bx,by);q.stroke();q.beginPath();q.moveTo(o.x2,o.y2);q.lineTo(bx+px*hd*.48,by+py*hd*.48);q.lineTo(bx-px*hd*.48,by-py*hd*.48);q.closePath();q.fill();label(q,o.label,(o.x+o.x2)/2,(o.y+o.y2)/2-s*.48,s*.3)}else if(o.type==='defense'&&l>1){ux=dx/l;uy=dy/l;px=-uy;py=ux;q.beginPath();q.moveTo(o.x,o.y);q.lineTo(o.x2,o.y2);q.stroke();let inter=Math.max(26,s*.72),n=Math.max(2,Math.floor(l/inter));q.lineWidth=Math.max(2,o.lineWidth*.72);q.beginPath();for(let i=0;i<=n;i++){let t=i/n,a=o.x+dx*t,b=o.y+dy*t,tick=s*.32;q.moveTo(a,b);q.lineTo(a+px*tick,b+py*tick)}q.stroke();label(q,o.label,(o.x+o.x2)/2+px*s*.58,(o.y+o.y2)/2+py*s*.58,s*.29)}else if(o.type==='area'){let a=Math.min(o.x,o.x2),b=Math.min(o.y,o.y2),w=Math.abs(dx),h=Math.abs(dy);q.globalAlpha*=.35;q.fillRect(a,b,w,h);q.globalAlpha=Math.max(.05,Math.min(1,o.opacity==null?1:o.opacity));q.setLineDash([s*.34,s*.2]);q.strokeRect(a,b,w,h);q.setLineDash([]);label(q,o.label,a+w/2,b+Math.max(s*.38,18),s*.32)}q.restore()}
-function fit(){let p=28,s=Math.min((c.clientWidth-p*2)/img.naturalWidth,(c.clientHeight-p*2)/img.naturalHeight);v.s=Math.max(.03,s);v.x=(c.clientWidth-img.naturalWidth*v.s)/2;v.y=(c.clientHeight-img.naturalHeight*v.s)/2;draw()}
-function zoom(f,a,b){let wx=(a-v.x)/v.s,wy=(b-v.y)/v.s;v.s=Math.max(.03,Math.min(12,v.s*f));v.x=a-wx*v.s;v.y=b-wy*v.s;draw()}
-function pt(e){let r=c.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
-c.onpointerdown=e=>{e.preventDefault();let p=pt(e);drag={id:e.pointerId,p,v:{...v}};c.setPointerCapture(e.pointerId);c.style.cursor='grabbing'};c.onpointermove=e=>{let p=pt(e),wx=(p.x-v.x)/v.s,wy=(p.y-v.y)/v.s,g=wg(wx,wy);if(g)$('game').textContent='ゲーム座標: '+g.x.toFixed(1)+', '+g.y.toFixed(1);else if(project.calibration){let z=project.calibration,gx=z.topLeft.x+wx/img.naturalWidth*(z.bottomRight.x-z.topLeft.x),gy=z.topLeft.y+wy/img.naturalHeight*(z.bottomRight.y-z.topLeft.y);$('game').textContent='ゲーム座標: '+gx.toFixed(1)+', '+gy.toFixed(1)}if(drag&&drag.id===e.pointerId){v.x=drag.v.x+p.x-drag.p.x;v.y=drag.v.y+p.y-drag.p.y;draw()}};c.onpointerup=e=>{drag=null;c.style.cursor='grab'};c.onwheel=e=>{e.preventDefault();let p=pt(e);zoom(Math.exp(-e.deltaY*.0015),p.x,p.y)};
-function bounds(o){if(['arrow','defense','area'].includes(o.type))return{x:Math.min(o.x,o.x2),y:Math.min(o.y,o.y2),w:Math.abs(o.x2-o.x),h:Math.abs(o.y2-o.y)};let r=o.size*.8;return{x:o.x-r,y:o.y-r,w:r*2,h:r*2}}
-c.onclick=e=>{if(drag)return;let p=pt(e),wx=(p.x-v.x)/v.s,wy=(p.y-v.y)/v.s;for(let i=project.objects.length-1;i>=0;i--){let o=project.objects[i],b=bounds(o);if(vis(o)&&wx>=b.x&&wx<=b.x+b.w&&wy>=b.y&&wy<=b.y+b.h){$('infoTitle').textContent=o.label||'';$('infoText').textContent=o.description||'';$('info').classList.add('show');break}}};
-$('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeight/2);$('zout').onclick=()=>zoom(.8,c.clientWidth/2,c.clientHeight/2);$('phase').value=phase;$('phase').onchange=e=>{phase=e.target.value;draw()};
+function visible(o){return !o.hidden&&(phase==='すべて'||(phase==='共通'?o.phase==='共通':o.phase==='共通'||o.phase===phase))}
+function label(q,text,a,b,fs){if(!text)return;fs=Math.max(8,fs||10);q.save();q.font='700 '+fs+'px sans-serif';q.textAlign='center';q.textBaseline='middle';let w=q.measureText(String(text)).width+fs*.8,h=fs*1.5;q.fillStyle='rgba(9,11,14,.82)';rr(q,a-w/2,b-h/2,w,h,fs*.28);q.fill();q.strokeStyle='rgba(255,255,255,.2)';q.lineWidth=Math.max(1,1/view.s);q.stroke();q.fillStyle='#fff';q.fillText(String(text),a,b);q.restore()}
+function labelAnchor(o){if(o.type==='arrow'||o.type==='defense'||o.type==='area')return{x:(o.x+o.x2)/2,y:(o.y+o.y2)/2};return{x:o.x,y:o.y}}
+function object(q,o){q.save();q.globalAlpha=Math.max(.05,Math.min(1,o.opacity==null?1:o.opacity));q.lineCap='round';q.lineJoin='round';q.strokeStyle=o.color;q.fillStyle=o.color;q.lineWidth=o.lineWidth||4;let s=o.size||28,r=s/2,dx=o.x2-o.x,dy=o.y2-o.y,l=Math.hypot(dx,dy),ux,uy,px,py,ls=o.labelSize||10;if(o.symbolVisible===false&&o.type!=='text'){let a=labelAnchor(o);label(q,o.label,a.x,a.y,ls);q.restore();return}
+if(o.type==='ally'||o.type==='enemy'){q.beginPath();q.arc(o.x,o.y,r,0,Math.PI*2);q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,(o.lineWidth||3)*.55);q.stroke();q.fillStyle='#fff';q.font='800 '+Math.max(12,s*.35)+'px sans-serif';q.textAlign='center';q.textBaseline='middle';q.fillText(o.type==='ally'?'自':'敵',o.x,o.y+1);label(q,o.label,o.x,o.y+r+s*.22,ls)}
+else if(o.type==='garrison'){q.translate(o.x,o.y);q.beginPath();q.moveTo(0,-s*.5);q.lineTo(s*.38,-s*.28);q.lineTo(s*.31,s*.22);q.quadraticCurveTo(0,s*.55,0,s*.55);q.quadraticCurveTo(0,s*.55,-s*.31,s*.22);q.lineTo(-s*.38,-s*.28);q.closePath();q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,(o.lineWidth||3)*.5);q.stroke();q.fillStyle='#fff';q.font='800 '+s*.28+'px sans-serif';q.textAlign='center';q.textBaseline='middle';q.fillText('駐',0,0);q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.75,ls)}
+else if(o.type==='camp'){q.translate(o.x,o.y);q.beginPath();q.moveTo(0,-s*.5);q.lineTo(s*.52,s*.42);q.lineTo(-s*.52,s*.42);q.closePath();q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,(o.lineWidth||3)*.5);q.stroke();q.beginPath();q.moveTo(0,-s*.5);q.lineTo(0,s*.42);q.moveTo(-s*.28,s*.42);q.lineTo(0,-s*.5);q.lineTo(s*.28,s*.42);q.stroke();q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.68,ls)}
+else if(o.type==='fort'){q.translate(o.x,o.y);q.beginPath();q.rect(-s*.45,-s*.25,s*.9,s*.68);q.rect(-s*.48,-s*.48,s*.22,s*.28);q.rect(-s*.11,-s*.48,s*.22,s*.28);q.rect(s*.26,-s*.48,s*.22,s*.28);q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,(o.lineWidth||3)*.48);q.stroke();q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.72,ls)}
+else if(o.type==='relocate'||['castle','gate','bridge','station'].includes(o.type)){q.translate(o.x,o.y);r=s*.5;q.beginPath();if(o.type==='gate'){q.moveTo(0,-r);q.lineTo(r,0);q.lineTo(0,r);q.lineTo(-r,0);q.closePath()}else if(o.type==='station'){q.moveTo(-r*.82,-r);q.lineTo(r*.82,-r);q.lineTo(r,0);q.lineTo(r*.82,r);q.lineTo(-r*.82,r);q.lineTo(-r,0);q.closePath()}else if(o.type==='bridge'){rr(q,-r,-r*.58,s,s*.82,s*.12)}else{rr(q,-r,-r,s,s,s*.12)}q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,(o.lineWidth||3)*.5);q.stroke();q.fillStyle='#fff';q.font='800 '+s*.34+'px sans-serif';q.textAlign='center';q.textBaseline='middle';q.fillText(({relocate:'遷',castle:'城',gate:'関',bridge:'橋',station:'駅'})[o.type]||'',0,1);q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.74,ls)}
+else if(o.type==='target'){q.translate(o.x,o.y);r=s*.45;q.lineWidth=Math.max(3,o.lineWidth||3);q.beginPath();q.arc(0,0,r,0,Math.PI*2);q.stroke();q.beginPath();q.arc(0,0,r*.52,0,Math.PI*2);q.stroke();q.beginPath();q.moveTo(-r*1.25,0);q.lineTo(r*1.25,0);q.moveTo(0,-r*1.25);q.lineTo(0,r*1.25);q.stroke();q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.75,ls)}
+else if(o.type==='text'){let fs=Math.max(8,o.labelSize||s),lines=String(o.label||'メモ').split(/\\n/).slice(0,6);q.font='700 '+fs+'px sans-serif';let w=Math.max.apply(null,lines.map(t=>q.measureText(t||' ').width))+fs*.9,h=lines.length*fs*1.25+fs*.55;q.fillStyle='rgba(10,12,15,.78)';rr(q,o.x-fs*.35,o.y-fs*.28,w,h,fs*.25);q.fill();q.strokeStyle=o.color;q.lineWidth=Math.max(2,o.lineWidth||2);q.stroke();q.fillStyle=o.color;q.textAlign='left';q.textBaseline='top';lines.forEach((t,i)=>q.fillText(t,o.x,o.y+i*fs*1.25))}
+else if(o.type==='arrow'&&l>1){ux=dx/l;uy=dy/l;let hd=Math.min(Math.max(s,(o.lineWidth||4)*4),l*.38),bx=o.x2-ux*hd,by=o.y2-uy*hd;px=-uy;py=ux;q.beginPath();q.moveTo(o.x,o.y);q.lineTo(bx,by);q.stroke();q.beginPath();q.moveTo(o.x2,o.y2);q.lineTo(bx+px*hd*.48,by+py*hd*.48);q.lineTo(bx-px*hd*.48,by-py*hd*.48);q.closePath();q.fill();label(q,o.label,(o.x+o.x2)/2,(o.y+o.y2)/2-s*.48,ls)}
+else if(o.type==='defense'&&l>1){ux=dx/l;uy=dy/l;px=-uy;py=ux;q.beginPath();q.moveTo(o.x,o.y);q.lineTo(o.x2,o.y2);q.stroke();let inter=Math.max(26,s*.72),n=Math.max(2,Math.floor(l/inter));q.lineWidth=Math.max(2,(o.lineWidth||4)*.72);q.beginPath();for(let i=0;i<=n;i++){let t=i/n,a=o.x+dx*t,b=o.y+dy*t,tick=s*.32;q.moveTo(a,b);q.lineTo(a+px*tick,b+py*tick)}q.stroke();label(q,o.label,(o.x+o.x2)/2+px*s*.58,(o.y+o.y2)/2+py*s*.58,ls)}
+else if(o.type==='area'){let a=Math.min(o.x,o.x2),b=Math.min(o.y,o.y2),w=Math.abs(dx),h=Math.abs(dy);q.globalAlpha*=.35;q.fillRect(a,b,w,h);q.globalAlpha=Math.max(.05,Math.min(1,o.opacity==null?1:o.opacity));q.setLineDash([s*.34,s*.2]);q.strokeRect(a,b,w,h);q.setLineDash([]);label(q,o.label,a+w/2,b+Math.max(s*.38,18),ls)}q.restore()}
+function routeLine(path,color,dash){dash=dash||[];if(!path||path.length<2)return;ctx.save();ctx.strokeStyle=color;ctx.lineWidth=Math.max(1.2,3.2/view.s);ctx.lineJoin='round';ctx.lineCap='round';ctx.setLineDash(dash.map(n=>n/view.s));ctx.beginPath();path.forEach((idx,i)=>{let gx=idx%2000+.5,gy=Math.floor(idx/2000)+.5,p=gw(gx,gy);if(i)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y)});ctx.stroke();ctx.restore()}
+function refs(){let rp=project.routePlanner||{},items=[];function marker(o,fill,stroke,rad){let p=gw(Number(o.center_x),Number(o.center_y)),r=Math.max(2.2,rad/view.s);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=stroke;ctx.lineWidth=Math.max(.7,1/view.s);ctx.stroke()}if(rp.showGates!==false)(reference.gates||[]).forEach(o=>marker(o,'#f2a51a','#5d3a00',4));if(rp.showCities===true)(reference.cities||[]).forEach(o=>marker(o,'#7b201d','#f3d7ca',3.2));if(rp.showGateLabels!==false)(reference.gates||[]).forEach(o=>items.push({o:o,kind:'gate',priority:2000+Number(o.level||0)}));if(rp.showCityLabels!==false)(reference.cities||[]).forEach(o=>items.push({o:o,kind:'city',priority:1000+Number(o.level||0)}));items.sort((a,b)=>b.priority-a.priority||Number(a.o.id)-Number(b.o.id));let placed=[],cand=[[0,-15],[0,15],[16,0],[-16,0],[15,-13],[-15,-13],[15,13],[-15,13],[0,-28],[0,28]];ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';for(let it of items){let p=gw(Number(it.o.center_x),Number(it.o.center_y)),fs=Math.max(8.5,11/view.s);ctx.font='700 '+fs+'px "Noto Sans JP",sans-serif';let tw=ctx.measureText(it.o.name).width,chosen=null;for(let d of cand){let cx=p.x+d[0]/view.s,cy=p.y+d[1]/view.s,box={l:cx-tw/2-3/view.s,r:cx+tw/2+3/view.s,t:cy-fs*.7,b:cy+fs*.7};if(!placed.some(z=>!(box.r<z.l||box.l>z.r||box.b<z.t||box.t>z.b))){chosen={cx:cx,cy:cy,box:box};break}}if(!chosen)continue;placed.push(chosen.box);ctx.lineJoin='round';ctx.strokeStyle='rgba(12,22,31,.96)';ctx.lineWidth=3.2/view.s;ctx.strokeText(it.o.name,chosen.cx,chosen.cy);ctx.fillStyle=it.kind==='gate'?'#ffd166':'#f8fbff';ctx.fillText(it.o.name,chosen.cx,chosen.cy)}ctx.restore()}
+function draw(){let d=c.d||1,w=c.clientWidth,h=c.clientHeight;ctx.setTransform(d,0,0,d,0,0);ctx.fillStyle='#0c0e11';ctx.fillRect(0,0,w,h);ctx.save();ctx.translate(view.x,view.y);ctx.scale(view.s,view.s);ctx.drawImage(img,0,0);refs();let rp=project.routePlanner||{};routeLine(rp.path,'#e43b2e');if(rp.showAlt2&&rp.altPaths&&rp.altPaths[0])routeLine(rp.altPaths[0],'#22b8cf',[8,5]);if(rp.showAlt3&&rp.altPaths&&rp.altPaths[1])routeLine(rp.altPaths[1],'#b86cff',[3,5]);if(rp.points)rp.points.forEach((p,i)=>{let q=gw(p[0]+.5,p[1]+.5);ctx.save();ctx.fillStyle=i===0?'#23b967':(i===rp.points.length-1?'#e13d36':'#ffd54d');ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(1,1.4/view.s);ctx.beginPath();ctx.arc(q.x,q.y,Math.max(3,5.8/view.s),0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore()});project.objects.forEach(o=>{if(visible(o))object(ctx,o)});ctx.restore();$('zoom').textContent=Math.round(view.s*100)+'%'}
+function resize(){let r=stage.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2.5);c.width=Math.max(1,Math.floor(r.width*d));c.height=Math.max(1,Math.floor(r.height*d));c.style.width=r.width+'px';c.style.height=r.height+'px';c.d=d}
+function fit(){let pad=28,s=Math.min((c.clientWidth-pad*2)/img.naturalWidth,(c.clientHeight-pad*2)/img.naturalHeight);view.s=Math.max(.03,s);view.x=(c.clientWidth-img.naturalWidth*view.s)/2;view.y=(c.clientHeight-img.naturalHeight*view.s)/2;draw()}
+function zoom(f,a,b){let wx=(a-view.x)/view.s,wy=(b-view.y)/view.s;view.s=Math.max(.03,Math.min(12,view.s*f));view.x=a-wx*view.s;view.y=b-wy*view.s;draw()}
+function pointer(e){let r=c.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+img.onload=()=>{resize();fit();draw()};img.src=project.background.dataUrl||project.background.src;
+new ResizeObserver(()=>{resize();draw()}).observe(stage);
+c.onpointerdown=e=>{e.preventDefault();let p=pointer(e);drag={id:e.pointerId,p:p,v:{s:view.s,x:view.x,y:view.y}};c.setPointerCapture(e.pointerId);c.style.cursor='grabbing'};
+c.onpointermove=e=>{let p=pointer(e),wx=(p.x-view.x)/view.s,wy=(p.y-view.y)/view.s,g=wg(wx,wy);if(g)$('game').textContent='ゲーム座標: '+g.x.toFixed(1)+', '+g.y.toFixed(1);if(drag&&drag.id===e.pointerId){view.x=drag.v.x+p.x-drag.p.x;view.y=drag.v.y+p.y-drag.p.y;draw()}};
+c.onpointerup=()=>{drag=null;c.style.cursor='grab'};c.onpointercancel=c.onpointerup;c.onwheel=e=>{e.preventDefault();let p=pointer(e);zoom(Math.exp(-e.deltaY*.0015),p.x,p.y)};
+$('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeight/2);$('zout').onclick=()=>zoom(.8,c.clientWidth/2,c.clientHeight/2);$('phase').value=phase;$('phase').onchange=e=>{phase=e.target.value;draw()};
 </script></body></html>`;
   }
 
@@ -2004,7 +1991,8 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
         console.error(event);
       };
       const bits = decodeBase64Bytes(embedded.passableLandB64);
-      routeWorker.postMessage({ type: 'init', buffer: bits.buffer }, [bits.buffer]);
+      const stationRuns = new Uint32Array(Array.isArray(embedded.stationRoadRuns) ? embedded.stationRoadRuns : []);
+      routeWorker.postMessage({ type: 'init', buffer: bits.buffer, stationRuns: stationRuns.buffer }, [bits.buffer, stationRuns.buffer]);
     }
     syncRouteUI();
     requestRender();
@@ -2042,7 +2030,7 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     const rp = ensureRoutePlanner();
     rp.points = points || [];
     rp.path = []; rp.altPaths = []; rp.result = null;
-    refs.routeResult.textContent = '';
+    renderRouteResult();
     dirty = true; requestRender();
   }
 
@@ -2093,7 +2081,10 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
 
   function renderRouteResult() {
     const rp = ensureRoutePlanner();
-    if (!rp.result) { refs.routeResult.textContent = ''; return; }
+    if (!rp.result) {
+      refs.routeResult.innerHTML = '<span class="route-placeholder">経路を計算すると、ここに最短マス数を表示します。</span>';
+      return;
+    }
     const r = rp.result;
     if (r.status !== 'ok') {
       const labels = { outside:'マップ範囲外です', start_blocked:'開始点が通行不可です', goal_blocked:'終点が通行不可です', no_path:'到達可能な経路がありません', max_expand:'探索上限に達しました', error:'経路計算エラー' };
@@ -2103,8 +2094,12 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     const blocked = rp.blockedGates.map(id => pk1Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
     const alts = Array.isArray(r.alternatives) ? r.alternatives : [];
     let extra = '';
-    if (rp.showAlt2 && alts[0]) extra += `<div class="route-alt-summary alt2">候補2 ${alts[0].steps} マス</div>`;
-    if (rp.showAlt3 && alts[1]) extra += `<div class="route-alt-summary alt3">候補3 ${alts[1].steps} マス</div>`;
+    if (rp.showAlt2) extra += alts[0]
+      ? `<div class="route-alt-summary alt2">候補2 ${alts[0].steps} マス</div>`
+      : '<div class="route-alt-summary alt2 unavailable">候補2：経路1と重ならない経路なし</div>';
+    if (rp.showAlt3) extra += alts[1]
+      ? `<div class="route-alt-summary alt3">候補3 ${alts[1].steps} マス</div>`
+      : '<div class="route-alt-summary alt3 unavailable">候補3：経路1と重ならない経路なし</div>';
     refs.routeResult.innerHTML = `<div class="route-ok">最短 ${r.totalSteps} マス</div>${extra}<table>` +
       `<tr><td>通過関所</td><td>${crossed.length ? crossed.join('、') : '-'}</td></tr>` +
       `<tr><td>遮断関所</td><td>${blocked.length ? blocked.join('、') : '-'}</td></tr></table>`;
@@ -2139,8 +2134,8 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
       const xmin=Number(g.xmin),xmax=Number(g.xmax),ymin=Number(g.ymin),ymax=Number(g.ymax);
       if (rp.path.some(idx => { const x=idx%PK1_WIDTH,y=Math.floor(idx/PK1_WIDTH); return x>=xmin&&x<=xmax&&y>=ymin&&y<=ymax; })) crossed.push(Number(g.id));
     }
-    rp.result = { status:'ok', totalSteps:Number(first.totalSteps || 0), crossedGates:crossed,
-      alternatives: routes.slice(1,3).map(item => ({ steps:Number(item.totalSteps || 0) })) };
+    rp.result = { status:'ok', totalSteps:Number(first.totalSteps || 0), stationCells:Number(first.stationCells || 0), crossedGates:crossed,
+      alternatives: routes.slice(1,3).map(item => ({ steps:Number(item.totalSteps || 0), stationCells:Number(item.stationCells || 0) })) };
     dirty = true; renderRouteResult(); requestRender();
   }
 

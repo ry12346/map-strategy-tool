@@ -37,7 +37,7 @@
           </div>
         </div>
         <button id="helpBtn" class="icon-button" type="button" title="使い方" aria-label="使い方">?</button>
-        <button id="toggleInspectorBtn" class="button ghost mobile-only" type="button">属性</button>
+        <button id="toggleInspectorBtn" class="button ghost mobile-only" type="button">設定</button>
       </nav>
     </header>
 
@@ -101,69 +101,11 @@
         </div>
       </section>
 
-      <aside id="inspector" class="inspector" aria-label="属性とレイヤー">
+      <aside id="inspector" class="inspector" aria-label="作戦設定">
         <div class="inspector-header">
-          <h2>属性</h2>
+          <h2>作戦設定</h2>
           <button id="closeInspectorBtn" class="icon-button mobile-only" type="button" aria-label="閉じる">×</button>
         </div>
-
-        <div id="noSelection" class="no-selection">
-          <div class="no-selection-icon">◇</div>
-          <p>記号を選択すると、名称や色を変更できます。</p>
-        </div>
-
-        <form id="propertyForm" class="property-form" hidden onsubmit="return false;">
-          <label>
-            <span>名称</span>
-            <input id="propLabel" type="text" maxlength="80" autocomplete="off">
-          </label>
-
-          <label>
-            <span>説明</span>
-            <textarea id="propDescription" rows="3" maxlength="500"></textarea>
-          </label>
-
-          <div class="form-row">
-            <label>
-              <span>色</span>
-              <input id="propColor" type="color">
-            </label>
-            <label>
-              <span>不透明度</span>
-              <input id="propOpacity" type="range" min="10" max="100" step="5">
-            </label>
-          </div>
-
-          <div class="form-row">
-            <label>
-              <span>大きさ</span>
-              <input id="propSize" type="range" min="12" max="120" step="2">
-            </label>
-            <label>
-              <span>線の太さ</span>
-              <input id="propLineWidth" type="range" min="1" max="20" step="1">
-            </label>
-          </div>
-
-          <label>
-            <span>作戦段階</span>
-            <select id="propPhase">
-              <option value="共通">共通</option>
-              <option value="第1段階">第1段階</option>
-              <option value="第2段階">第2段階</option>
-              <option value="第3段階">第3段階</option>
-              <option value="予備">予備</option>
-            </select>
-          </label>
-
-          <div class="object-actions">
-            <button id="duplicateBtn" class="button ghost" type="button">複製</button>
-            <button id="bringFrontBtn" class="button ghost" type="button">最前面</button>
-            <button id="deleteObjectBtn" class="button danger" type="button">削除</button>
-          </div>
-        </form>
-
-
 
         <section class="panel-section scenario-section">
           <div class="section-heading">
@@ -174,19 +116,6 @@
             <button class="scenario-tab" type="button" data-scenario="B">作戦案B</button>
             <button class="scenario-tab" type="button" data-scenario="C">作戦案C</button>
           </div>
-        </section>
-
-        <section class="panel-section timeline-section">
-          <div class="section-heading">
-            <h3>作戦タイムライン</h3>
-            <button id="timelineAddBtn" class="text-button" type="button">＋追加</button>
-          </div>
-          <div class="timeline-nav">
-            <button id="timelinePrevBtn" class="button ghost" type="button" title="前の工程">←</button>
-            <span id="timelineCurrentLabel" class="timeline-current">工程なし</span>
-            <button id="timelineNextBtn" class="button ghost" type="button" title="次の工程">→</button>
-          </div>
-          <div id="timelineList" class="timeline-list"></div>
         </section>
 
         <section class="panel-section phase-filter-section">
@@ -202,7 +131,8 @@
             <option value="予備">共通＋予備</option>
           </select>
         </section>
-<section class="panel-section layer-section">
+
+        <section class="panel-section layer-section">
           <div class="section-heading">
             <h3>配置済み記号</h3>
             <span id="objectCount" class="count-badge">0</span>
@@ -210,12 +140,63 @@
           <div id="layerList" class="layer-list"></div>
         </section>
 
+        <section id="propertySection" class="panel-section property-section" hidden>
+          <div class="section-heading">
+            <h3>属性</h3>
+          </div>
+          <form id="propertyForm" class="property-form" onsubmit="return false;">
+            <label>
+              <span>名称</span>
+              <input id="propLabel" type="text" maxlength="80" autocomplete="off">
+            </label>
+
+            <div class="form-row property-number-row">
+              <label>
+                <span>記号の大きさ</span>
+                <input id="propSize" type="number" min="8" max="300" step="1">
+              </label>
+              <label>
+                <span>文字の大きさ</span>
+                <input id="propLabelSize" type="number" min="8" max="120" step="1">
+              </label>
+            </div>
+
+            <div class="form-row property-number-row">
+              <label>
+                <span>線の太さ</span>
+                <input id="propLineWidth" type="number" min="1" max="50" step="1">
+              </label>
+              <label id="symbolVisibleField" class="symbol-visible-field">
+                <span>記号本体</span>
+                <span class="property-check"><input id="propSymbolVisible" type="checkbox" checked> 表示する</span>
+              </label>
+            </div>
+
+            <label>
+              <span>作戦段階</span>
+              <select id="propPhase">
+                <option value="共通">共通</option>
+                <option value="第1段階">第1段階</option>
+                <option value="第2段階">第2段階</option>
+                <option value="第3段階">第3段階</option>
+                <option value="予備">予備</option>
+              </select>
+            </label>
+
+            <div class="object-actions">
+              <button id="duplicateBtn" class="button ghost" type="button">複製</button>
+              <button id="bringFrontBtn" class="button ghost" type="button">最前面</button>
+              <button id="deleteObjectBtn" class="button danger" type="button">削除</button>
+            </div>
+          </form>
+        </section>
+
         <section class="panel-section route-section">
           <div class="section-heading">
             <h3>経路探索</h3>
             <span id="routeBadge" class="count-badge">PK1</span>
           </div>
-          <p class="muted route-note">左の「経路」を選んでマップをクリックすると経路点を追加できます。座標を直接入力することもできます。</p>
+          <p class="muted route-note">左の「経路」を選んでマップをクリックすると経路点を追加できます。最短マス数を最優先し、同じ最短距離なら駅路をより多く通る経路を選びます。</p>
 
           <label class="route-field">
             <span>経路点（x,y / 1行1点）</span>
@@ -230,7 +211,8 @@
             <label class="route-check"><input id="showAltRoute2" type="checkbox"><span>経路候補2を表示</span></label>
             <label class="route-check"><input id="showAltRoute3" type="checkbox"><span>経路候補3を表示</span></label>
           </div>
-<label class="route-field">
+
+          <label class="route-field">
             <span>城・関所検索</span>
             <div class="route-search-row">
               <input id="placeSearch" list="placeSearchList" autocomplete="off" placeholder="例：榛名関所">
@@ -239,6 +221,8 @@
             </div>
           </label>
           <datalist id="placeSearchList"></datalist>
+
+          <div id="routeResult" class="route-result"><span class="route-placeholder">経路を計算すると、ここに最短マス数を表示します。</span></div>
 
           <details class="route-details">
             <summary>通行不可にする関所</summary>
@@ -257,8 +241,6 @@
             <label class="route-check"><input id="showGateLabels" type="checkbox" checked><span>関所名</span></label>
             <label class="route-check"><input id="showCityLabels" type="checkbox" checked><span>城名</span></label>
           </details>
-
-          <div id="routeResult" class="route-result"></div>
         </section>
       </aside>
     </main>
@@ -291,19 +273,19 @@
         </section>
         <section>
           <h3>2. 経路探索</h3>
-          <p>左の「経路」を選び、開始・経由・到着地点を順番にクリックします。「経路計算」で山・河川・海などを避けた陸路の最短経路を求めます。必要なときだけ「経路候補2」「経路候補3」をチェックすると代替経路も同時表示できます。</p>
+          <p>左の「経路」を選び、開始・経由・到着地点を順番にクリックします。「経路計算」で山・河川・海などを避けた陸路を探索します。最短マス数を最優先し、同じ最短距離なら駅路をより多く通る経路を優先します。「経路候補2」「経路候補3」は、開始・経由・到着地点を除いて経路1と重ならない別経路を探索します。</p>
         </section>
         <section>
           <h3>3. 城・関所</h3>
           <p>城または関所を右クリックすると、経路点への追加、座標コピー、関所の通行不可切り替えができます。右側の「マップ表示」で城名・関所名やマーカーを個別に表示／非表示できます。</p>
         </section>
         <section>
-          <h3>4. 作戦案とタイムライン</h3>
-          <p>作戦案A/B/Cはそれぞれ独立した記号・経路・タイムラインを保持します。タイムラインに時刻、工程名、作戦段階を登録し、「表示」でその段階へ切り替えられます。</p>
+          <h3>4. 作戦案</h3>
+          <p>作戦案A/B/Cはそれぞれ独立した記号・経路を保持します。案を切り替えると、地図上の記号と経路も切り替わります。</p>
         </section>
         <section>
           <h3>5. 作戦記号</h3>
-          <p>左のツールを選び、マップ上をクリックして配置します。記号上のドラッグは記号移動、それ以外の場所のドラッグはマップ移動です。選択するとサイズ変更ハンドルが表示され、防衛線は端点変更と回転ができます。</p>
+          <p>左のツールを選び、マップ上をクリックして配置します。記号上のドラッグは記号移動、それ以外の場所のドラッグはマップ移動です。選択するとサイズ変更ハンドルが表示され、防衛線は端点変更と回転ができます。右側の属性では名称、記号サイズ、文字サイズ、線の太さ、記号本体の表示を変更できます。</p>
         </section>
         <section>
           <h3>6. 保存と共有</h3>
