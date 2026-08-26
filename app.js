@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 13;
+  const APP_VERSION = 15;
   const MAX_HISTORY = 80;
   const MIN_ZOOM = 0.03;
   const MAX_ZOOM = 12;
@@ -121,11 +121,15 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   let routeWorker = null;
   let routeBusy = false;
   let contextPlace = null;
+  let contextObjectId = null;
   let pk1LabelHitBoxes = [];
   const activeTouchPointers = new Map();
   let pinchGesture = null;
   let longPressState = null;
   let suppressTouchPointerId = null;
+  let mobileViewMode = false;
+  let mobileFullscreen = false;
+  let activeMobileInspectorTab = 'scenario';
 
   document.addEventListener('DOMContentLoaded', init);
 
@@ -146,6 +150,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
         view.x = canvas.clientWidth / 2 - oldCenter.x * view.scale;
         view.y = canvas.clientHeight / 2 - oldCenter.y * view.scale;
       }
+      syncMobileControls();
       requestRender();
     });
     observer.observe(refs.stageWrap);
@@ -169,8 +174,9 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     const ids = [
       'projectName', 'newProjectBtn', 'loadMapBtn', 'saveProjectBtn', 'loadProjectBtn',
       'exportMenuBtn', 'exportMenu', 'exportViewPngBtn', 'exportViewerBtn',
-      'helpBtn', 'toggleInspectorBtn', 'closeInspectorBtn', 'mapCanvas', 'stageWrap',
+      'helpBtn', 'toggleInspectorBtn', 'closeInspectorBtn', 'mobileModeBtn', 'mobileFullscreenBtn', 'mobileFullscreenExitBtn', 'mapCanvas', 'stageWrap',
       'emptyState', 'emptyLoadMapBtn', 'toast', 'undoBtn', 'redoBtn', 'deleteBtn',
+      'mobileSelectionBar', 'mobilePropertyBtn', 'mobileDuplicateBtn', 'mobileFrontBtn', 'mobileDeleteBtn', 'mobileRouteUndoFloat',
       'inspector', 'propertySection', 'propertyForm', 'propLabel', 'propSize', 'propLabelSize',
       'propLineWidth', 'propSymbolVisible', 'symbolVisibleField', 'propPhase', 'duplicateBtn', 'bringFrontBtn',
       'deleteObjectBtn', 'phaseFilter', 'calibrationBtn', 'calibrationSummary', 'layerList',
@@ -183,11 +189,13 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       'gateBlockClearBtn', 'gateBlockAllBtn', 'gateFilter', 'gateBlockList',
       'showGateMarkers', 'showCityMarkers', 'showGateLabels', 'showCityLabels', 'routeResult',
       'showAltRoute2', 'showAltRoute3',
-      'placeContextMenu', 'placeContextTitle', 'placeContextRouteBtn', 'placeContextCopyBtn', 'placeContextGateBtn'
+      'placeContextMenu', 'placeContextTitle', 'placeContextRouteBtn', 'placeContextCopyBtn', 'placeContextGateBtn', 'placeContextDeleteBtn', 'placeContextBackdrop'
     ];
     for (const id of ids) refs[id] = document.getElementById(id);
     refs.toolButtons = Array.from(document.querySelectorAll('.tool-button[data-tool]'));
     refs.scenarioButtons = Array.from(document.querySelectorAll('.scenario-tab[data-scenario]'));
+    refs.mobileInspectorTabButtons = Array.from(document.querySelectorAll('.mobile-inspector-tab[data-mobile-inspector-tab]'));
+    refs.mobileInspectorPanels = Array.from(document.querySelectorAll('.panel-section[data-mobile-panel]'));
   }
 
   function bindEvents() {
@@ -211,8 +219,21 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     });
 
     refs.helpBtn.addEventListener('click', () => refs.helpDialog.showModal());
-    refs.toggleInspectorBtn.addEventListener('click', () => refs.inspector.classList.add('open'));
+    refs.toggleInspectorBtn.addEventListener('click', () => {
+      if (isMobileReadOnly()) return;
+      setMobileInspectorTab(activeMobileInspectorTab, true);
+    });
     refs.closeInspectorBtn.addEventListener('click', () => refs.inspector.classList.remove('open'));
+    refs.mobileModeBtn.addEventListener('click', () => setMobileViewMode(!mobileViewMode));
+    refs.mobileFullscreenBtn.addEventListener('click', () => setMobileFullscreen(true));
+    refs.mobileFullscreenExitBtn.addEventListener('click', () => setMobileFullscreen(false));
+    refs.mobilePropertyBtn.addEventListener('click', () => openSelectedPropertiesMobile());
+    refs.mobileDuplicateBtn.addEventListener('click', duplicateSelected);
+    refs.mobileFrontBtn.addEventListener('click', bringSelectedToFront);
+    refs.mobileDeleteBtn.addEventListener('click', deleteSelected);
+    refs.mobileRouteUndoFloat.addEventListener('click', undoRoutePoint);
+    refs.mobileInspectorTabButtons.forEach(btn => btn.addEventListener('click', () => setMobileInspectorTab(btn.dataset.mobileInspectorTab, true)));
+    refs.placeContextBackdrop.addEventListener('pointerdown', e => { e.preventDefault(); hidePlaceContextMenu(); });
 
     refs.undoBtn.addEventListener('click', undo);
     refs.redoBtn.addEventListener('click', redo);
@@ -260,6 +281,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     refs.placeContextRouteBtn.addEventListener('click', contextAddRoutePoint);
     refs.placeContextCopyBtn.addEventListener('click', contextCopyCoordinate);
     refs.placeContextGateBtn.addEventListener('click', contextToggleGateBlock);
+    refs.placeContextDeleteBtn.addEventListener('click', contextDeleteObject);
 
     refs.fitBtn.addEventListener('click', fitView);
     refs.zoomInBtn.addEventListener('click', () => zoomAt(1.25, canvas.clientWidth / 2, canvas.clientHeight / 2));
@@ -922,13 +944,101 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   }
 
   function setTool(tool) {
+    if (isMobileReadOnly() && tool !== 'select') tool = 'select';
     activeTool = tool;
     refs.toolButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tool === tool));
     canvas.dataset.tool = tool;
     pendingDrawStart = null;
     drawPreview = null;
     canvas.style.cursor = '';
+    if (isMobileLayout() && tool === 'route' && !mobileViewMode && !mobileFullscreen) setMobileInspectorTab('route', false);
+    syncMobileControls();
     requestRender();
+  }
+
+  function isMobileLayout() {
+    return window.matchMedia('(max-width: 900px)').matches;
+  }
+
+  function isMobileReadOnly() {
+    return isMobileLayout() && (mobileViewMode || mobileFullscreen);
+  }
+
+  function setMobileViewMode(viewOnly) {
+    mobileViewMode = !!viewOnly;
+    if (mobileViewMode) {
+      cancelLongPress();
+      interaction = null;
+      pendingDrawStart = null;
+      drawPreview = null;
+      hidePlaceContextMenu();
+      refs.inspector.classList.remove('open');
+      selectObject(null);
+      setTool('select');
+      showToast('閲覧モード：1本指は地図移動専用です');
+    } else {
+      showToast('編集モードに切り替えました');
+    }
+    syncMobileControls();
+    requestRender();
+  }
+
+  function setMobileFullscreen(enabled) {
+    mobileFullscreen = !!enabled;
+    if (mobileFullscreen) {
+      cancelLongPress();
+      interaction = null;
+      pendingDrawStart = null;
+      drawPreview = null;
+      hidePlaceContextMenu();
+      refs.inspector.classList.remove('open');
+      selectObject(null);
+    }
+    syncMobileControls();
+    requestAnimationFrame(() => {
+      resizeCanvas();
+      requestRender();
+    });
+  }
+
+  function setMobileInspectorTab(key, openInspector = false) {
+    const allowed = ['scenario', 'objects', 'route', 'display'];
+    if (!allowed.includes(key)) key = 'scenario';
+    activeMobileInspectorTab = key;
+    refs.mobileInspectorTabButtons.forEach(btn => {
+      const active = btn.dataset.mobileInspectorTab === key;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    refs.mobileInspectorPanels.forEach(panel => panel.classList.toggle('mobile-panel-active', panel.dataset.mobilePanel === key));
+    if (openInspector && isMobileLayout() && !isMobileReadOnly()) refs.inspector.classList.add('open');
+  }
+
+  function openSelectedPropertiesMobile() {
+    if (!getSelected() || isMobileReadOnly()) return;
+    setMobileInspectorTab('objects', true);
+    requestAnimationFrame(() => {
+      if (!refs.propertySection.hidden) refs.propertySection.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+  }
+
+  function syncMobileControls() {
+    const mobile = isMobileLayout();
+    document.body.classList.toggle('mobile-view-mode', mobile && mobileViewMode);
+    document.body.classList.toggle('mobile-map-fullscreen', mobile && mobileFullscreen);
+    if (refs.mobileModeBtn) {
+      refs.mobileModeBtn.textContent = mobileViewMode ? '閲覧' : '編集';
+      refs.mobileModeBtn.classList.toggle('is-view-mode', mobileViewMode);
+      refs.mobileModeBtn.setAttribute('aria-pressed', mobileViewMode ? 'true' : 'false');
+    }
+    if (refs.mobileFullscreenBtn) refs.mobileFullscreenBtn.setAttribute('aria-pressed', mobileFullscreen ? 'true' : 'false');
+    if (refs.mobileFullscreenExitBtn) refs.mobileFullscreenExitBtn.hidden = !(mobile && mobileFullscreen);
+    if (refs.toggleInspectorBtn) refs.toggleInspectorBtn.disabled = mobile && (mobileViewMode || mobileFullscreen);
+    const selected = !!getSelected();
+    if (refs.mobileSelectionBar) refs.mobileSelectionBar.hidden = !(mobile && !mobileViewMode && !mobileFullscreen && selected);
+    const rp = project ? ensureRoutePlanner() : null;
+    if (refs.mobileRouteUndoFloat) refs.mobileRouteUndoFloat.hidden = !(mobile && !mobileViewMode && !mobileFullscreen && activeTool === 'route' && rp && rp.points.length > 0);
+    setMobileInspectorTab(activeMobileInspectorTab, false);
   }
 
   function cancelLongPress(pointerId = null) {
@@ -951,7 +1061,12 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       if (!current) return;
       const moved = Math.hypot(current.x - state.startScreen.x, current.y - state.startScreen.y);
       if (moved > TOUCH_MOVE_CANCEL_PX) return;
-      if (openPlaceContextMenuAt(current.clientX, current.clientY, { x: current.x, y: current.y })) {
+      const currentWorld = screenToWorld(current.x, current.y, true);
+      const objectHit = isMobileReadOnly() ? null : hitTest(currentWorld.x, currentWorld.y);
+      const opened = objectHit
+        ? openObjectContextMenuAt(objectHit, current.clientX, current.clientY)
+        : openPlaceContextMenuAt(current.clientX, current.clientY, { x: current.x, y: current.y });
+      if (opened) {
         suppressTouchPointerId = state.pointerId;
         interaction = null;
         canvas.classList.remove('panning');
@@ -996,6 +1111,22 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     return true;
   }
 
+  function hitRoutePointAtScreen(sx, sy, touch = false) {
+    const rp = ensureRoutePlanner();
+    if (!rp.points || !rp.points.length) return -1;
+    const threshold = touch ? 24 : 13;
+    let best = -1, bestDist = threshold;
+    for (let i = rp.points.length - 1; i >= 0; i--) {
+      const point = rp.points[i];
+      const w = gameToWorld(Number(point[0]) + .5, Number(point[1]) + .5);
+      if (!w) continue;
+      const px = w.x * view.scale + view.x, py = w.y * view.scale + view.y;
+      const d = Math.hypot(px - sx, py - sy);
+      if (d <= bestDist) { best = i; bestDist = d; }
+    }
+    return best;
+  }
+
   function onPointerDown(e) {
     if (!backgroundImage) return;
     if (e.pointerType === 'mouse' && e.button === 2) return;
@@ -1014,9 +1145,20 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     }
 
     const world = screenToWorld(screen.x, screen.y, true);
-    const forcePan = activeTool === 'pan' || spacePressed || e.button === 1;
+    const forcePan = activeTool === 'pan' || spacePressed || e.button === 1 || (e.pointerType === 'touch' && isMobileReadOnly());
+    const routePointIndex = !forcePan ? hitRoutePointAtScreen(screen.x, screen.y, e.pointerType === 'touch') : -1;
     const handle = !forcePan ? hitSelectionHandle(world.x, world.y) : null;
     const hit = !forcePan ? hitTest(world.x, world.y) : null;
+
+    if (routePointIndex >= 0) {
+      const rp = ensureRoutePlanner();
+      interaction = {
+        mode: 'route-point-pending', pointerId: e.pointerId, routePointIndex,
+        startScreen: screen, startWorld: world, snapshot: serializeProject(), moved: false,
+        originalPoint: rp.points[routePointIndex] ? [...rp.points[routePointIndex]] : null
+      };
+      return;
+    }
 
     if (handle && selectedId) {
       const obj = getSelected();
@@ -1083,6 +1225,12 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     e.preventDefault();
     const movedPx = Math.hypot(screen.x - interaction.startScreen.x, screen.y - interaction.startScreen.y);
 
+    if (interaction.mode === 'route-point-pending' && movedPx >= 4) {
+      if (e.pointerType === 'touch') cancelLongPress(e.pointerId);
+      interaction.mode = 'route-point-drag';
+      interaction.moved = true;
+      canvas.style.cursor = 'move';
+    }
     if (interaction.mode === 'object-pending' && movedPx >= 5) {
       if (e.pointerType === 'touch') cancelLongPress(e.pointerId);
       interaction.mode = 'drag';
@@ -1095,6 +1243,25 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       interaction.moved = true;
       canvas.style.cursor = '';
       canvas.classList.add('panning');
+    }
+
+    if (interaction.mode === 'route-point-drag') {
+      const game = worldToGame(world.x, world.y);
+      if (!game) return;
+      const gx = Math.max(0, Math.min(PK1_WIDTH - 1, Math.round(game.x)));
+      const gy = Math.max(0, Math.min(PK1_HEIGHT - 1, Math.round(game.y)));
+      const rp = ensureRoutePlanner();
+      const index = interaction.routePointIndex;
+      if (index < 0 || index >= rp.points.length) return;
+      const old = rp.points[index];
+      if (!old || old[0] !== gx || old[1] !== gy) {
+        rp.points[index] = [gx, gy];
+        rp.path = []; rp.altPaths = []; rp.result = null;
+        dirty = true;
+        syncRouteUI();
+        requestRender();
+      }
+      return;
     }
 
     if (interaction.mode === 'handle-drag') {
@@ -1250,7 +1417,10 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     const screen = pointerScreen(e);
     const world = screenToWorld(screen.x, screen.y, true);
 
-    if ((interaction.mode === 'drag' || interaction.mode === 'handle-drag') && interaction.moved) {
+    if (interaction.mode === 'route-point-drag' && interaction.moved) {
+      recordHistory(interaction.snapshot);
+      syncRouteUI();
+    } else if ((interaction.mode === 'drag' || interaction.mode === 'handle-drag') && interaction.moved) {
       recordHistory(interaction.snapshot);
       syncObjectUI();
     } else if (interaction.mode === 'background-pending' && !interaction.moved) {
@@ -1272,7 +1442,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     const hit = hitTest(world.x, world.y);
     if (!hit) return;
     selectObject(hit.id);
-    refs.inspector.classList.add('open');
+    if (isMobileLayout()) setMobileInspectorTab('objects', true);
+    else refs.inspector.classList.add('open');
     refs.propLabel.focus();
     refs.propLabel.select();
   }
@@ -1361,6 +1532,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     refs.propSymbolVisible.disabled = noSymbol;
     refs.symbolVisibleField.classList.toggle('disabled', noSymbol);
     refs.propSize.disabled = noSymbol;
+    syncMobileControls();
   }
 
   function syncObjectUI() {
@@ -1430,6 +1602,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     updateHistoryButtons();
     refs.deleteBtn.disabled = !selectedId;
     syncRouteUI();
+    syncMobileControls();
   }
 
   function renderLayerList() {
@@ -1485,7 +1658,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
 
       item.addEventListener('click', () => {
         selectObject(obj.id);
-        if (window.matchMedia('(max-width: 900px)').matches) refs.inspector.classList.add('open');
+        if (isMobileLayout() && !isMobileReadOnly()) setMobileInspectorTab('objects', true);
       });
       item.append(symbol, info, eye);
       refs.layerList.appendChild(item);
@@ -2175,7 +2348,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     rp.points = points || [];
     rp.path = []; rp.altPaths = []; rp.result = null;
     renderRouteResult();
-    dirty = true; requestRender();
+    dirty = true; syncMobileControls(); requestRender();
   }
 
   function alternateRouteChanged() {
@@ -2221,6 +2394,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       for (const cb of refs.gateBlockList.querySelectorAll('input[type="checkbox"]')) cb.checked = rp.blockedGates.includes(Number(cb.dataset.id));
     }
     renderRouteResult();
+    syncMobileControls();
   }
 
   function renderRouteResult() {
@@ -2377,25 +2551,56 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     return { id: null, name: '地点', kind: 'point', center_x: gx, center_y: gy };
   }
 
+  function positionContextMenu(clientX, clientY, fallbackHeight = 150) {
+    const rect = refs.stageWrap.getBoundingClientRect();
+    refs.placeContextMenu.hidden = false;
+    const mobile = isMobileLayout();
+    if (refs.placeContextBackdrop) refs.placeContextBackdrop.hidden = !mobile;
+    if (mobile) {
+      refs.placeContextMenu.style.left = '';
+      refs.placeContextMenu.style.top = '';
+      return;
+    }
+    const menuWidth = refs.placeContextMenu.offsetWidth || 202;
+    const menuHeight = refs.placeContextMenu.offsetHeight || fallbackHeight;
+    refs.placeContextMenu.style.left = `${Math.min(Math.max(8, rect.width - menuWidth - 8), Math.max(8, clientX - rect.left))}px`;
+    refs.placeContextMenu.style.top = `${Math.min(Math.max(8, rect.height - menuHeight - 8), Math.max(8, clientY - rect.top))}px`;
+  }
+
+  function openObjectContextMenuAt(obj, clientX, clientY) {
+    if (!obj) { hidePlaceContextMenu(); return false; }
+    contextPlace = null;
+    contextObjectId = obj.id;
+    selectObject(obj.id);
+    refs.placeContextTitle.textContent = obj.label || TYPE_META[obj.type]?.name || '配置済み記号';
+    refs.placeContextRouteBtn.hidden = true;
+    refs.placeContextCopyBtn.hidden = true;
+    refs.placeContextGateBtn.hidden = true;
+    refs.placeContextDeleteBtn.hidden = false;
+    positionContextMenu(clientX, clientY, 92);
+    return true;
+  }
+
   function openPlaceContextMenuAt(clientX, clientY, screen = null) {
     const rect = refs.stageWrap.getBoundingClientRect();
     const s = screen || { x: clientX - rect.left, y: clientY - rect.top };
     const place = contextTargetAtScreen(s.x, s.y);
     if (!place) { hidePlaceContextMenu(); return false; }
     contextPlace = place;
+    contextObjectId = null;
+    const readOnly = isMobileReadOnly();
+    refs.placeContextRouteBtn.hidden = readOnly;
+    refs.placeContextCopyBtn.hidden = false;
+    refs.placeContextDeleteBtn.hidden = true;
     const gx = Math.round(Number(place.center_x)), gy = Math.round(Number(place.center_y));
     refs.placeContextTitle.textContent = place.kind === 'point' ? `地点  (${gx},${gy})` : `${place.name}  (${gx},${gy})`;
     const isGate = place.kind === 'gate';
-    refs.placeContextGateBtn.hidden = !isGate;
-    if (isGate) {
+    refs.placeContextGateBtn.hidden = readOnly || !isGate;
+    if (isGate && !readOnly) {
       const blocked = ensureRoutePlanner().blockedGates.includes(Number(place.id));
       refs.placeContextGateBtn.textContent = blocked ? '通行可能に戻す' : 'この関所を通行不可';
     }
-    refs.placeContextMenu.hidden = false;
-    const menuWidth = refs.placeContextMenu.offsetWidth || 202;
-    const menuHeight = refs.placeContextMenu.offsetHeight || 150;
-    refs.placeContextMenu.style.left = `${Math.min(Math.max(8, rect.width - menuWidth - 8), Math.max(8, clientX - rect.left))}px`;
-    refs.placeContextMenu.style.top = `${Math.min(Math.max(8, rect.height - menuHeight - 8), Math.max(8, clientY - rect.top))}px`;
+    positionContextMenu(clientX, clientY, 150);
     return true;
   }
 
@@ -2404,9 +2609,14 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     openPlaceContextMenuAt(e.clientX, e.clientY, pointerScreen(e));
   }
 
-  function hidePlaceContextMenu() { if (refs.placeContextMenu) refs.placeContextMenu.hidden = true; contextPlace = null; }
+  function hidePlaceContextMenu() {
+    if (refs.placeContextMenu) refs.placeContextMenu.hidden = true;
+    if (refs.placeContextBackdrop) refs.placeContextBackdrop.hidden = true;
+    contextPlace = null;
+    contextObjectId = null;
+  }
   function contextAddRoutePoint() {
-    if (!contextPlace) return; const rp=ensureRoutePlanner();
+    if (!contextPlace || isMobileReadOnly()) return; const rp=ensureRoutePlanner();
     rp.points.push([Math.round(Number(contextPlace.center_x)),Math.round(Number(contextPlace.center_y))]); rp.path=[];rp.altPaths=[];rp.result=null;dirty=true;syncRouteUI();requestRender();hidePlaceContextMenu();
   }
   async function contextCopyCoordinate() {
@@ -2416,10 +2626,19 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     hidePlaceContextMenu();
   }
   function contextToggleGateBlock() {
-    if (!contextPlace || contextPlace.kind !== 'gate') return;
+    if (!contextPlace || contextPlace.kind !== 'gate' || isMobileReadOnly()) return;
     const id=Number(contextPlace.id), rp=ensureRoutePlanner(); const set=new Set(rp.blockedGates.map(Number));
     if(set.has(id)) set.delete(id); else set.add(id); rp.blockedGates=[...set]; rp.path=[];rp.altPaths=[];rp.result=null; dirty=true;
     populateGateBlockList(); syncRouteUI(); requestRender(); hidePlaceContextMenu();
+  }
+
+  function contextDeleteObject() {
+    if (!contextObjectId || isMobileReadOnly()) return;
+    const obj = project.objects.find(o => o.id === contextObjectId);
+    if (!obj) { hidePlaceContextMenu(); return; }
+    selectObject(obj.id);
+    hidePlaceContextMenu();
+    deleteSelected();
   }
 
   function drawPk1ReferenceLayers(context) {

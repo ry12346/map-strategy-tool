@@ -37,6 +37,8 @@
           </div>
         </div>
         <button id="helpBtn" class="icon-button" type="button" title="使い方" aria-label="使い方">?</button>
+        <button id="mobileModeBtn" class="button ghost mobile-only" type="button" aria-pressed="false" title="閲覧／編集モードを切り替え">編集</button>
+        <button id="mobileFullscreenBtn" class="button ghost mobile-only" type="button" title="マップを全画面表示">全画面</button>
         <button id="toggleInspectorBtn" class="button ghost mobile-only" type="button">設定</button>
       </nav>
     </header>
@@ -93,11 +95,24 @@
           </div>
         </div>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+        <button id="mobileRouteUndoFloat" class="mobile-route-undo mobile-only" type="button" hidden>↶ 1点戻す</button>
+
+        <div id="mobileSelectionBar" class="mobile-selection-bar" hidden aria-label="選択中の記号の操作">
+          <button id="mobilePropertyBtn" type="button">属性</button>
+          <button id="mobileDuplicateBtn" type="button">複製</button>
+          <button id="mobileFrontBtn" type="button">最前面</button>
+          <button id="mobileDeleteBtn" class="danger" type="button">削除</button>
+        </div>
+
+        <button id="mobileFullscreenExitBtn" class="mobile-fullscreen-exit" type="button" hidden>× 全画面終了</button>
+        <div id="placeContextBackdrop" class="place-context-backdrop" hidden></div>
         <div id="placeContextMenu" class="place-context-menu" hidden>
           <div id="placeContextTitle" class="place-context-title"></div>
           <button id="placeContextRouteBtn" type="button">経路点に追加</button>
           <button id="placeContextCopyBtn" type="button">座標をコピー</button>
           <button id="placeContextGateBtn" type="button" hidden>この関所を通行不可</button>
+          <button id="placeContextDeleteBtn" class="danger-context-button" type="button" hidden>この記号を削除</button>
         </div>
       </section>
 
@@ -106,8 +121,14 @@
           <h2>作戦設定</h2>
           <button id="closeInspectorBtn" class="icon-button mobile-only" type="button" aria-label="閉じる">×</button>
         </div>
+        <div class="mobile-inspector-tabs mobile-only" role="tablist" aria-label="設定カテゴリ">
+          <button class="mobile-inspector-tab active" type="button" data-mobile-inspector-tab="scenario" role="tab" aria-selected="true">作戦案</button>
+          <button class="mobile-inspector-tab" type="button" data-mobile-inspector-tab="objects" role="tab" aria-selected="false">記号</button>
+          <button class="mobile-inspector-tab" type="button" data-mobile-inspector-tab="route" role="tab" aria-selected="false">経路</button>
+          <button class="mobile-inspector-tab" type="button" data-mobile-inspector-tab="display" role="tab" aria-selected="false">表示</button>
+        </div>
 
-        <section class="panel-section scenario-section">
+        <section class="panel-section scenario-section" data-mobile-panel="scenario">
           <div class="section-heading">
             <h3>作戦案</h3>
           </div>
@@ -118,7 +139,7 @@
           </div>
         </section>
 
-        <section class="panel-section phase-filter-section">
+        <section class="panel-section phase-filter-section" data-mobile-panel="display">
           <div class="section-heading">
             <h3>表示する段階</h3>
           </div>
@@ -132,7 +153,7 @@
           </select>
         </section>
 
-        <section class="panel-section layer-section">
+        <section class="panel-section layer-section" data-mobile-panel="objects">
           <div class="section-heading">
             <h3>配置済み記号</h3>
             <span id="objectCount" class="count-badge">0</span>
@@ -140,7 +161,7 @@
           <div id="layerList" class="layer-list"></div>
         </section>
 
-        <section id="propertySection" class="panel-section property-section" hidden>
+        <section id="propertySection" class="panel-section property-section" data-mobile-panel="objects" hidden>
           <div class="section-heading">
             <h3>属性</h3>
           </div>
@@ -191,7 +212,7 @@
           </form>
         </section>
 
-        <section class="panel-section route-section">
+        <section class="panel-section route-section" data-mobile-panel="route">
           <div class="section-heading">
             <h3>経路探索</h3>
             <span id="routeBadge" class="count-badge">PK1</span>
@@ -234,13 +255,16 @@
             <div id="gateBlockList" class="gate-block-list"></div>
           </details>
 
-          <details class="route-details" open>
-            <summary>マップ表示</summary>
-            <label class="route-check"><input id="showGateMarkers" type="checkbox" checked><span>関所マーカー</span></label>
-            <label class="route-check"><input id="showCityMarkers" type="checkbox"><span>城マーカー</span></label>
-            <label class="route-check"><input id="showGateLabels" type="checkbox" checked><span>関所名</span></label>
-            <label class="route-check"><input id="showCityLabels" type="checkbox" checked><span>城名</span></label>
-          </details>
+        </section>
+
+        <section class="panel-section map-display-section" data-mobile-panel="display">
+          <div class="section-heading">
+            <h3>マップ表示</h3>
+          </div>
+          <label class="route-check"><input id="showGateMarkers" type="checkbox" checked><span>関所マーカー</span></label>
+          <label class="route-check"><input id="showCityMarkers" type="checkbox"><span>城マーカー</span></label>
+          <label class="route-check"><input id="showGateLabels" type="checkbox" checked><span>関所名</span></label>
+          <label class="route-check"><input id="showCityLabels" type="checkbox" checked><span>城名</span></label>
         </section>
       </aside>
     </main>
@@ -273,11 +297,11 @@
         </section>
         <section>
           <h3>2. 経路探索</h3>
-          <p>左の「経路」を選び、開始・経由・到着地点を順番にクリックします。「経路計算」で山・河川・海などを避けた陸路を探索します。最短マス数を最優先し、同じ最短距離なら駅路をより多く通る経路を優先します。「経路候補2」「経路候補3」は、開始・経由・到着地点を除いて経路1と重ならない別経路を探索します。</p>
+          <p>左の「経路」を選び、開始・経由・到着地点を順番にクリックします。「経路計算」で山・河川・海などを避けた陸路を探索します。最短マス数を最優先し、同じ最短距離なら駅路をより多く通る経路を優先します。「経路候補2」「経路候補3」は、開始・経由・到着地点を除いて経路1と重ならない別経路を探索します。スマホでは地図上の経路点を直接ドラッグして位置を修正でき、「経路」選択中は地図上の「1点戻す」も使用できます。</p>
         </section>
         <section>
           <h3>3. 城・関所</h3>
-          <p>城または関所を右クリックすると、経路点への追加、座標コピー、関所の通行不可切り替えができます。右側の「マップ表示」で城名・関所名やマーカーを個別に表示／非表示できます。</p>
+          <p>PCでは地点を右クリック、スマホでは地点を長押しすると、経路点への追加や座標コピー、関所の通行不可切り替えができます。スマホでは長押しメニューを画面下から大きく表示します。配置済み記号を長押しすると削除メニューを表示します。「表示」タブで城名・関所名やマーカーを個別に表示／非表示できます。</p>
         </section>
         <section>
           <h3>4. 作戦案</h3>
@@ -285,10 +309,14 @@
         </section>
         <section>
           <h3>5. 作戦記号</h3>
-          <p>左のツールを選び、マップ上をクリックして配置します。記号上のドラッグは記号移動、それ以外の場所のドラッグはマップ移動です。選択するとサイズ変更ハンドルが表示され、防衛線は端点変更と回転ができます。右側の属性では名称、記号サイズ、文字サイズ、線の太さ、記号本体の表示を変更できます。</p>
+          <p>左のツールを選び、マップ上をクリックして配置します。記号上のドラッグは記号移動、それ以外の場所のドラッグはマップ移動です。選択するとサイズ変更ハンドルが表示され、防衛線は端点変更と回転ができます。スマホでは記号選択時に地図下部へ「属性・複製・最前面・削除」の操作バーを表示します。設定画面は「作戦案・記号・経路・表示」の4タブです。</p>
         </section>
         <section>
-          <h3>6. 保存と共有</h3>
+          <h3>6. スマホ操作</h3>
+          <p>「編集」では記号配置・移動・経路編集ができます。「閲覧」に切り替えると1本指操作は地図移動専用になり、誤編集を防げます。「全画面」は編集UIを隠してマップだけを表示します。2本指ピンチで拡大・縮小できます。</p>
+        </section>
+        <section>
+          <h3>7. 保存と共有</h3>
           <p>「作戦保存」は編集可能な <code>.nssmap</code> ファイルです。「共有用HTML」は閲覧専用の単一HTMLを作成し、出力時の城・関所の名称／マーカー表示、経路候補、作戦段階を引き継ぎます。</p>
         </section>
         <section>
