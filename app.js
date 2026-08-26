@@ -5,6 +5,10 @@
   const MAX_HISTORY = 80;
   const MIN_ZOOM = 0.03;
   const MAX_ZOOM = 12;
+  const PK1_WIDTH = 2000;
+  const PK1_HEIGHT = 3250;
+  const PK1_BACKGROUND = { builtin: true, name: 'PK1標準マップ', type: 'image/png', src: 'data/map.png', width: PK1_WIDTH, height: PK1_HEIGHT };
+  const PK1_CALIBRATION = { topLeft: { x: 0, y: 0 }, bottomRight: { x: PK1_WIDTH, y: PK1_HEIGHT } };
 
   const TYPE_META = {
     ally:     { name: '自軍',   label: '自軍部隊', color: '#2f80d0', size: 52, lineWidth: 5, symbol: '自' },
@@ -42,6 +46,15 @@
   let propertySnapshot = null;
   let toastTimer = null;
 
+  let pk1Cities = [];
+  let pk1Gates = [];
+  let pk1Regions = [];
+  let pk1Land = [];
+  let placeLookup = new Map();
+  let labelOverlayImage = null;
+  let routeWorker = null;
+  let routeBusy = false;
+
   document.addEventListener('DOMContentLoaded', init);
 
   function init() {
@@ -64,6 +77,20 @@
       requestRender();
     });
     observer.observe(refs.stageWrap);
+
+    loadBackgroundFromProject().then(() => {
+      syncAllUI();
+      fitView();
+    }).catch(error => {
+      console.error(error);
+      backgroundImage = null;
+      syncAllUI();
+      showToast('PK1標準マップを読み込めませんでした', true);
+    });
+    loadPk1Assets().catch(error => {
+      console.error(error);
+      showToast('PK1経路データを読み込めませんでした。GitHub Pages上で開いてください。', true);
+    });
   }
 
   function cacheRefs() {
@@ -78,7 +105,11 @@
       'objectCount', 'cursorPosition', 'gamePosition', 'fitBtn', 'zoomOutBtn', 'zoomDisplay',
       'zoomInBtn', 'mapFileInput', 'projectFileInput', 'helpDialog', 'calibrationDialog',
       'calibrationForm', 'calTopLeftX', 'calTopLeftY', 'calBottomRightX', 'calBottomRightY',
-      'clearCalibrationBtn', 'saveCalibrationBtn'
+      'clearCalibrationBtn', 'saveCalibrationBtn', 'builtinMapBtn', 'emptyBuiltinMapBtn',
+      'routeBadge', 'routePoints', 'routeCalculateBtn', 'routeUndoPointBtn', 'routeClearBtn',
+      'routeMode', 'placeSearch', 'placeSearchList', 'placeCenterBtn', 'placeAddBtn',
+      'gateBlockClearBtn', 'gateBlockAllBtn', 'gateFilter', 'gateBlockList',
+      'showGateMarkers', 'showCityMarkers', 'showPlaceLabels', 'routeResult'
     ];
     for (const id of ids) refs[id] = document.getElementById(id);
     refs.toolButtons = Array.from(document.querySelectorAll('.tool-button[data-tool]'));
@@ -88,6 +119,8 @@
     refs.toolButtons.forEach(btn => btn.addEventListener('click', () => setTool(btn.dataset.tool)));
 
     refs.newProjectBtn.addEventListener('click', newProject);
+    refs.builtinMapBtn.addEventListener('click', activateBuiltinMap);
+    refs.emptyBuiltinMapBtn.addEventListener('click', activateBuiltinMap);
     refs.loadMapBtn.addEventListener('click', () => refs.mapFileInput.click());
     refs.emptyLoadMapBtn.addEventListener('click', () => refs.mapFileInput.click());
     refs.mapFileInput.addEventListener('change', handleMapFile);
@@ -133,6 +166,20 @@
     refs.calibrationBtn.addEventListener('click', openCalibrationDialog);
     refs.clearCalibrationBtn.addEventListener('click', clearCalibration);
     refs.calibrationForm.addEventListener('submit', saveCalibration);
+
+    refs.routeCalculateBtn.addEventListener('click', calculateRoute);
+    refs.routeUndoPointBtn.addEventListener('click', undoRoutePoint);
+    refs.routeClearBtn.addEventListener('click', clearRoute);
+    refs.routePoints.addEventListener('input', routePointsChanged);
+    refs.routeMode.addEventListener('change', routeSettingsChanged);
+    refs.placeCenterBtn.addEventListener('click', centerSelectedPlace);
+    refs.placeAddBtn.addEventListener('click', addSelectedPlaceToRoute);
+    refs.gateBlockClearBtn.addEventListener('click', () => setAllGateBlocks(false));
+    refs.gateBlockAllBtn.addEventListener('click', () => setAllGateBlocks(true));
+    refs.gateFilter.addEventListener('input', filterGateBlocks);
+    refs.showGateMarkers.addEventListener('change', routeDisplayChanged);
+    refs.showCityMarkers.addEventListener('change', routeDisplayChanged);
+    refs.showPlaceLabels.addEventListener('change', routeDisplayChanged);
 
     refs.fitBtn.addEventListener('click', fitView);
     refs.zoomInBtn.addEventListener('click', () => zoomAt(1.25, canvas.clientWidth / 2, canvas.clientHeight / 2));
@@ -194,8 +241,9 @@
       name: '新規作戦',
       createdAt: now,
       updatedAt: now,
-      background: null,
-      calibration: null,
+      background: { ...PK1_BACKGROUND },
+      calibration: JSON.parse(JSON.stringify(PK1_CALIBRATION)),
+      routePlanner: defaultRoutePlanner(),
       objects: []
     };
   }
@@ -264,6 +312,9 @@
     } else {
       drawBlankGrid(ctx, 1600, 1000);
     }
+
+    drawPk1ReferenceLayers(ctx);
+    drawRouteOverlay(ctx);
 
     for (const obj of project.objects) {
       if (isObjectVisible(obj)) drawObject(ctx, obj, obj.id === selectedId);
@@ -721,6 +772,20 @@
       return;
     }
 
+    if (activeTool === 'route') {
+      const game = worldToGame(world.x, world.y);
+      if (!game) { showToast('ゲーム座標が設定されていません', true); return; }
+      const gx = Math.round(game.x), gy = Math.round(game.y);
+      if (gx < 0 || gx >= PK1_WIDTH || gy < 0 || gy >= PK1_HEIGHT) { showToast('PK1マップ範囲外です', true); return; }
+      const rp = ensureRoutePlanner();
+      rp.points.push([gx, gy]);
+      rp.path = []; rp.result = null;
+      dirty = true;
+      syncRouteUI();
+      requestRender();
+      return;
+    }
+
     if (activeTool === 'arrow' || activeTool === 'defense' || activeTool === 'area') {
       drawPreview = createObject(activeTool, { x: world.x, y: world.y, x2: world.x, y2: world.y });
       interaction = { mode: 'draw', pointerId: e.pointerId, startWorld: world };
@@ -916,6 +981,7 @@
     updateCalibrationSummary();
     updateHistoryButtons();
     refs.deleteBtn.disabled = !selectedId;
+    syncRouteUI();
   }
 
   function renderLayerList() {
@@ -1099,6 +1165,7 @@
     dirty = false;
     refs.mapFileInput.value = '';
     refs.projectFileInput.value = '';
+    loadBackgroundFromProject().then(() => { syncAllUI(); fitView(); });
     syncAllUI();
     requestRender();
   }
@@ -1191,8 +1258,9 @@
       name: String(data.name || '名称未設定'),
       createdAt: data.createdAt || new Date().toISOString(),
       updatedAt: data.updatedAt || new Date().toISOString(),
-      background: data.background || null,
-      calibration: data.calibration || null,
+      background: data.background || { ...PK1_BACKGROUND },
+      calibration: data.calibration || JSON.parse(JSON.stringify(PK1_CALIBRATION)),
+      routePlanner: normalizeRoutePlanner(data.routePlanner),
       objects: []
     };
 
@@ -1227,11 +1295,13 @@
   }
 
   async function loadBackgroundFromProject() {
-    if (!project.background || !project.background.dataUrl) {
+    if (!project.background) {
       backgroundImage = null;
       return;
     }
-    backgroundImage = await imageFromSource(project.background.dataUrl);
+    const source = project.background.dataUrl || project.background.src;
+    if (!source) { backgroundImage = null; return; }
+    backgroundImage = await imageFromSource(source);
     project.background.width = backgroundImage.naturalWidth;
     project.background.height = backgroundImage.naturalHeight;
   }
@@ -1280,11 +1350,29 @@
     };
   }
 
+  function gameToWorld(x, y) {
+    const c = project.calibration;
+    if (!c || !project.background) return null;
+    const w = project.background.width || backgroundImage?.naturalWidth;
+    const h = project.background.height || backgroundImage?.naturalHeight;
+    const dx = c.bottomRight.x - c.topLeft.x;
+    const dy = c.bottomRight.y - c.topLeft.y;
+    if (!w || !h || !dx || !dy) return null;
+    return {
+      x: ((x - c.topLeft.x) / dx) * w,
+      y: ((y - c.topLeft.y) / dy) * h
+    };
+  }
+
   function formatCoord(n) {
     return Math.abs(n - Math.round(n)) < 0.04 ? String(Math.round(n)) : n.toFixed(1);
   }
 
   function openCalibrationDialog() {
+    if (project.background?.builtin) {
+      showToast('PK1標準マップはゲーム座標 0,0 ～ 2000,3250 で設定済みです');
+      return;
+    }
     if (!project.background) {
       showToast('先にマップ画像を読み込んでください', true);
       return;
@@ -1329,9 +1417,9 @@
 
   function updateCalibrationSummary() {
     const c = project.calibration;
-    refs.calibrationSummary.textContent = c
-      ? `左上 ${formatCoord(c.topLeft.x)},${formatCoord(c.topLeft.y)} ／ 右下 ${formatCoord(c.bottomRight.x)},${formatCoord(c.bottomRight.y)}`
-      : '未設定';
+    refs.calibrationSummary.textContent = project.background?.builtin
+      ? 'PK1標準：0,0 ～ 2000,3250（設定済み）'
+      : (c ? `左上 ${formatCoord(c.topLeft.x)},${formatCoord(c.topLeft.y)} ／ 右下 ${formatCoord(c.bottomRight.x)},${formatCoord(c.bottomRight.y)}` : '未設定');
   }
 
   function toggleExportMenu() {
@@ -1366,6 +1454,8 @@
       outCtx.fillRect(0, 0, outW, outH);
       outCtx.scale(outputScale, outputScale);
       outCtx.drawImage(backgroundImage, 0, 0);
+      drawPk1ReferenceLayers(outCtx);
+      drawRouteOverlay(outCtx);
       for (const obj of project.objects) if (isObjectVisible(obj)) drawObject(outCtx, obj, false);
       const blob = await canvasToBlob(out, 'image/png');
       downloadBlob(blob, `${safeFilename(project.name)}_${safeFilename(phaseFilter)}.png`);
@@ -1394,6 +1484,8 @@
       outCtx.translate(view.x, view.y);
       outCtx.scale(view.scale, view.scale);
       outCtx.drawImage(backgroundImage, 0, 0);
+      drawPk1ReferenceLayers(outCtx);
+      drawRouteOverlay(outCtx);
       for (const obj of project.objects) if (isObjectVisible(obj)) drawObject(outCtx, obj, false);
       outCtx.restore();
       const blob = await canvasToBlob(out, 'image/png');
@@ -1411,17 +1503,26 @@
     });
   }
 
-  function exportViewerHtml() {
+  async function exportViewerHtml() {
     if (!backgroundImage) {
       showToast('先にマップ画像を読み込んでください', true);
       return;
     }
-    project.name = refs.projectName.value.trim() || '名称未設定';
-    project.updatedAt = new Date().toISOString();
-    const html = buildViewerHtml(project);
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    downloadBlob(blob, safeFilename(project.name) + '_共有用.html');
-    showToast('閲覧専用の共有HTMLを出力しました');
+    try {
+      project.name = refs.projectName.value.trim() || '名称未設定';
+      project.updatedAt = new Date().toISOString();
+      const exportProject = JSON.parse(JSON.stringify(project));
+      if (!exportProject.background.dataUrl) {
+        const embed = document.createElement('canvas');
+        embed.width = backgroundImage.naturalWidth; embed.height = backgroundImage.naturalHeight;
+        embed.getContext('2d').drawImage(backgroundImage, 0, 0);
+        exportProject.background.dataUrl = embed.toDataURL('image/png');
+      }
+      const html = buildViewerHtml(exportProject);
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      downloadBlob(blob, safeFilename(project.name) + '_共有用.html');
+      showToast('閲覧専用の共有HTMLを出力しました');
+    } catch (error) { console.error(error); showToast('共有HTMLの出力に失敗しました', true); }
   }
 
   function buildViewerHtml(data) {
@@ -1438,10 +1539,10 @@
 'use strict';
 const project=${safeProject};
 const c=document.getElementById('c'),x=c.getContext('2d'),stage=document.getElementById('stage');let img=new Image(),v={s:1,x:0,y:0},drag=null,phase='すべて';
-const $=id=>document.getElementById(id);img.onload=()=>{resize();fit();draw()};img.src=project.background.dataUrl;
+const $=id=>document.getElementById(id);img.onload=()=>{resize();fit();draw()};img.src=project.background.dataUrl||project.background.src;
 new ResizeObserver(()=>{resize();draw()}).observe(stage);function resize(){let r=stage.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2.5);c.width=Math.max(1,Math.floor(r.width*d));c.height=Math.max(1,Math.floor(r.height*d));c.style.width=r.width+'px';c.style.height=r.height+'px';c.d=d}
 function vis(o){return !o.hidden&&(phase==='すべて'||(phase==='共通'?o.phase==='共通':o.phase==='共通'||o.phase===phase))}
-function draw(){let d=c.d||1,w=c.clientWidth,h=c.clientHeight;x.setTransform(d,0,0,d,0,0);x.fillStyle='#0c0e11';x.fillRect(0,0,w,h);x.save();x.translate(v.x,v.y);x.scale(v.s,v.s);x.drawImage(img,0,0);project.objects.forEach(o=>{if(vis(o))obj(x,o)});x.restore();$('zoom').textContent=Math.round(v.s*100)+'%'}
+function draw(){let d=c.d||1,w=c.clientWidth,h=c.clientHeight;x.setTransform(d,0,0,d,0,0);x.fillStyle='#0c0e11';x.fillRect(0,0,w,h);x.save();x.translate(v.x,v.y);x.scale(v.s,v.s);x.drawImage(img,0,0);if(project.routePlanner&&project.routePlanner.path&&project.routePlanner.path.length>1){x.save();x.strokeStyle='#e43b2e';x.lineWidth=Math.max(1.2,3.2/v.s);x.lineJoin='round';x.lineCap='round';x.beginPath();project.routePlanner.path.forEach((idx,i)=>{let gx=idx%2000+.5,gy=Math.floor(idx/2000)+.5;if(i)x.lineTo(gx,gy);else x.moveTo(gx,gy)});x.stroke();x.restore()}if(project.routePlanner&&project.routePlanner.points){project.routePlanner.points.forEach((p,i)=>{x.save();x.fillStyle=i===0?'#23b967':(i===project.routePlanner.points.length-1?'#e13d36':'#ffd54d');x.strokeStyle='#fff';x.lineWidth=Math.max(1,1.4/v.s);x.beginPath();x.arc(p[0]+.5,p[1]+.5,Math.max(3,5.8/v.s),0,Math.PI*2);x.fill();x.stroke();x.restore()})}project.objects.forEach(o=>{if(vis(o))obj(x,o)});x.restore();$('zoom').textContent=Math.round(v.s*100)+'%'}
 function rr(q,a,b,w,h,r){r=Math.min(r,w/2,h/2);q.beginPath();q.moveTo(a+r,b);q.arcTo(a+w,b,a+w,b+h,r);q.arcTo(a+w,b+h,a,b+h,r);q.arcTo(a,b+h,a,b,r);q.arcTo(a,b,a+w,b,r);q.closePath()}
 function label(q,t,a,b,fs){if(!t)return;fs=Math.max(10,fs||14);q.save();q.font='700 '+fs+'px sans-serif';q.textAlign='center';q.textBaseline='middle';let w=q.measureText(t).width+fs*.8,h=fs*1.5;q.fillStyle='rgba(9,11,14,.82)';rr(q,a-w/2,b-h/2,w,h,fs*.28);q.fill();q.strokeStyle='rgba(255,255,255,.2)';q.lineWidth=Math.max(1,1/v.s);q.stroke();q.fillStyle='#fff';q.fillText(t,a,b);q.restore()}
 function obj(q,o){q.save();q.globalAlpha=Math.max(.05,Math.min(1,o.opacity==null?1:o.opacity));q.lineCap='round';q.lineJoin='round';q.strokeStyle=o.color;q.fillStyle=o.color;q.lineWidth=o.lineWidth||4;let s=o.size,r=s/2,dx=o.x2-o.x,dy=o.y2-o.y,l=Math.hypot(dx,dy),ux,uy,px,py;if(o.type==='ally'||o.type==='enemy'){q.beginPath();q.arc(o.x,o.y,r,0,Math.PI*2);q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,o.lineWidth*.55);q.stroke();q.fillStyle='#fff';q.font='800 '+Math.max(12,s*.35)+'px sans-serif';q.textAlign='center';q.textBaseline='middle';q.fillText(o.type==='ally'?'自':'敵',o.x,o.y+1);label(q,o.label,o.x,o.y+r+s*.22,s*.28)}else if(o.type==='garrison'){q.translate(o.x,o.y);q.beginPath();q.moveTo(0,-s*.5);q.lineTo(s*.38,-s*.28);q.lineTo(s*.31,s*.22);q.quadraticCurveTo(0,s*.55,0,s*.55);q.quadraticCurveTo(0,s*.55,-s*.31,s*.22);q.lineTo(-s*.38,-s*.28);q.closePath();q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,o.lineWidth*.5);q.stroke();q.fillStyle='#fff';q.font='800 '+s*.28+'px sans-serif';q.textAlign='center';q.textBaseline='middle';q.fillText('駐',0,0);q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.75,s*.27)}else if(o.type==='camp'){q.translate(o.x,o.y);q.beginPath();q.moveTo(0,-s*.5);q.lineTo(s*.52,s*.42);q.lineTo(-s*.52,s*.42);q.closePath();q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,o.lineWidth*.5);q.stroke();q.beginPath();q.moveTo(0,-s*.5);q.lineTo(0,s*.42);q.moveTo(-s*.28,s*.42);q.lineTo(0,-s*.5);q.lineTo(s*.28,s*.42);q.stroke();q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.68,s*.27)}else if(o.type==='fort'){q.translate(o.x,o.y);q.beginPath();q.rect(-s*.45,-s*.25,s*.9,s*.68);q.rect(-s*.48,-s*.48,s*.22,s*.28);q.rect(-s*.11,-s*.48,s*.22,s*.28);q.rect(s*.26,-s*.48,s*.22,s*.28);q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,o.lineWidth*.48);q.stroke();q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.72,s*.27)}else if(o.type==='target'){q.translate(o.x,o.y);r=s*.45;q.lineWidth=Math.max(3,o.lineWidth);q.beginPath();q.arc(0,0,r,0,Math.PI*2);q.stroke();q.beginPath();q.arc(0,0,r*.52,0,Math.PI*2);q.stroke();q.beginPath();q.moveTo(-r*1.25,0);q.lineTo(r*1.25,0);q.moveTo(0,-r*1.25);q.lineTo(0,r*1.25);q.stroke();q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.75,s*.27)}else if(['castle','gate','bridge','station'].includes(o.type)){q.translate(o.x,o.y);r=s*.5;q.beginPath();if(o.type==='gate'){q.moveTo(0,-r);q.lineTo(r,0);q.lineTo(0,r);q.lineTo(-r,0);q.closePath()}else if(o.type==='station'){q.moveTo(-r*.82,-r);q.lineTo(r*.82,-r);q.lineTo(r,0);q.lineTo(r*.82,r);q.lineTo(-r*.82,r);q.lineTo(-r,0);q.closePath()}else if(o.type==='bridge'){rr(q,-r,-r*.58,s,s*.82,s*.12)}else{rr(q,-r,-r,s,s,s*.12)}q.fill();q.strokeStyle='#fff';q.lineWidth=Math.max(2,o.lineWidth*.5);q.stroke();if(o.type==='bridge'){q.beginPath();q.moveTo(-r*.72,-r*.16);q.lineTo(r*.72,-r*.16);q.moveTo(-r*.72,r*.16);q.lineTo(r*.72,r*.16);q.stroke()}q.fillStyle='#fff';q.font='800 '+s*.34+'px sans-serif';q.textAlign='center';q.textBaseline='middle';q.fillText(({castle:'城',gate:'関',bridge:'橋',station:'駅'})[o.type],0,o.type==='bridge'?-s*.02:1);q.translate(-o.x,-o.y);label(q,o.label,o.x,o.y+s*.74,s*.27)}else if(o.type==='text'){let fs=Math.max(12,s),lines=String(o.label||'メモ').split(/\\n/).slice(0,6);q.font='700 '+fs+'px sans-serif';let w=Math.max(...lines.map(t=>q.measureText(t||' ').width))+fs*.9,h=lines.length*fs*1.25+fs*.55;q.fillStyle='rgba(10,12,15,.78)';rr(q,o.x-fs*.35,o.y-fs*.28,w,h,fs*.25);q.fill();q.strokeStyle=o.color;q.lineWidth=Math.max(2,o.lineWidth);q.stroke();q.fillStyle=o.color;q.textAlign='left';q.textBaseline='top';lines.forEach((t,i)=>q.fillText(t,o.x,o.y+i*fs*1.25))}else if(o.type==='arrow'&&l>1){ux=dx/l;uy=dy/l;let hd=Math.min(Math.max(s,o.lineWidth*4),l*.38),bx=o.x2-ux*hd,by=o.y2-uy*hd;px=-uy;py=ux;q.beginPath();q.moveTo(o.x,o.y);q.lineTo(bx,by);q.stroke();q.beginPath();q.moveTo(o.x2,o.y2);q.lineTo(bx+px*hd*.48,by+py*hd*.48);q.lineTo(bx-px*hd*.48,by-py*hd*.48);q.closePath();q.fill();label(q,o.label,(o.x+o.x2)/2,(o.y+o.y2)/2-s*.48,s*.3)}else if(o.type==='defense'&&l>1){ux=dx/l;uy=dy/l;px=-uy;py=ux;q.beginPath();q.moveTo(o.x,o.y);q.lineTo(o.x2,o.y2);q.stroke();let inter=Math.max(26,s*.72),n=Math.max(2,Math.floor(l/inter));q.lineWidth=Math.max(2,o.lineWidth*.72);q.beginPath();for(let i=0;i<=n;i++){let t=i/n,a=o.x+dx*t,b=o.y+dy*t,tick=s*.32;q.moveTo(a,b);q.lineTo(a+px*tick,b+py*tick)}q.stroke();label(q,o.label,(o.x+o.x2)/2+px*s*.58,(o.y+o.y2)/2+py*s*.58,s*.29)}else if(o.type==='area'){let a=Math.min(o.x,o.x2),b=Math.min(o.y,o.y2),w=Math.abs(dx),h=Math.abs(dy);q.globalAlpha*=.35;q.fillRect(a,b,w,h);q.globalAlpha=Math.max(.05,Math.min(1,o.opacity==null?1:o.opacity));q.setLineDash([s*.34,s*.2]);q.strokeRect(a,b,w,h);q.setLineDash([]);label(q,o.label,a+w/2,b+Math.max(s*.38,18),s*.32)}q.restore()}
@@ -1482,6 +1583,243 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     toastTimer = setTimeout(() => refs.toast.classList.remove('show'), 2800);
   }
 
+  function defaultRoutePlanner() {
+    return { points: [], mode: 'land', blockedGates: [], showGates: true, showCities: false, showLabels: true, path: [], result: null };
+  }
+
+  function normalizeRoutePlanner(value) {
+    const base = defaultRoutePlanner();
+    if (!value || typeof value !== 'object') return base;
+    const points = Array.isArray(value.points) ? value.points.filter(p => Array.isArray(p) && p.length >= 2).map(p => [Math.round(Number(p[0])), Math.round(Number(p[1]))]).filter(p => p.every(Number.isFinite)) : [];
+    const blocked = Array.isArray(value.blockedGates) ? value.blockedGates.map(Number).filter(Number.isFinite) : [];
+    const path = Array.isArray(value.path) ? value.path.map(Number).filter(Number.isFinite) : [];
+    return {
+      points,
+      mode: value.mode === 'all' ? 'all' : 'land',
+      blockedGates: blocked,
+      showGates: value.showGates !== false,
+      showCities: value.showCities === true,
+      showLabels: value.showLabels !== false,
+      path,
+      result: value.result && typeof value.result === 'object' ? value.result : null
+    };
+  }
+
+  function ensureRoutePlanner() {
+    if (!project.routePlanner) project.routePlanner = defaultRoutePlanner();
+    return project.routePlanner;
+  }
+
+  async function loadPk1Assets() {
+    const [cities, gates, regions, land] = await Promise.all([
+      fetch('data/cities.json').then(checkFetch).then(r => r.json()),
+      fetch('data/gates.json').then(checkFetch).then(r => r.json()),
+      fetch('data/regions.json').then(checkFetch).then(r => r.json()),
+      fetch('data/land_metadata.json').then(checkFetch).then(r => r.json())
+    ]);
+    pk1Cities = cities; pk1Gates = gates; pk1Regions = regions; pk1Land = land;
+    labelOverlayImage = await imageFromSource('data/pk1_labels.png').catch(() => null);
+    populatePlaceSearch();
+    populateGateBlockList();
+    if (!routeWorker) {
+      routeWorker = new Worker('route_worker.js');
+      routeWorker.onmessage = handleRouteWorkerMessage;
+      routeWorker.onerror = event => {
+        routeBusy = false;
+        refs.routeCalculateBtn.disabled = false;
+        refs.routeResult.innerHTML = '<span class="route-error">経路探索ワーカーでエラーが発生しました。</span>';
+        console.error(event);
+      };
+    }
+    syncRouteUI();
+    requestRender();
+  }
+
+  function checkFetch(response) {
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.url}`);
+    return response;
+  }
+
+  function activateBuiltinMap() {
+    const doLoad = async () => {
+      const old = serializeProject();
+      recordHistory(old);
+      project.background = { ...PK1_BACKGROUND };
+      project.calibration = JSON.parse(JSON.stringify(PK1_CALIBRATION));
+      await loadBackgroundFromProject();
+      dirty = true;
+      syncAllUI();
+      fitView();
+      showToast('PK1標準マップに切り替えました');
+    };
+    if (project.background && !project.background.builtin && !confirm('現在の背景画像をPK1標準マップへ戻します。配置済みの作戦記号は維持されます。続けますか？')) return;
+    doLoad().catch(err => { console.error(err); showToast('PK1標準マップを読み込めませんでした', true); });
+  }
+
+  function routePointsFromText() {
+    const out = [];
+    for (const line of refs.routePoints.value.split(/\r?\n/)) {
+      const t = line.trim(); if (!t) continue;
+      const m = t.match(/^\s*(-?\d+)\s*,\s*(-?\d+)\s*$/);
+      if (!m) return null;
+      out.push([Number(m[1]), Number(m[2])]);
+    }
+    return out;
+  }
+
+  function routePointsChanged() {
+    const points = routePointsFromText();
+    if (!points) { refs.routeResult.innerHTML = '<span class="route-error">座標は x,y 形式で入力してください。</span>'; return; }
+    const rp = ensureRoutePlanner(); rp.points = points; rp.path = []; rp.result = null; dirty = true; requestRender();
+  }
+
+  function routeSettingsChanged() {
+    const rp = ensureRoutePlanner();
+    rp.mode = refs.routeMode.value === 'all' ? 'all' : 'land';
+    rp.showGates = refs.showGateMarkers.checked;
+    rp.showCities = refs.showCityMarkers.checked;
+    rp.showLabels = refs.showPlaceLabels.checked;
+    rp.path = []; rp.result = null; dirty = true; requestRender();
+  }
+
+  function routeDisplayChanged() {
+    const rp = ensureRoutePlanner();
+    rp.showGates = refs.showGateMarkers.checked;
+    rp.showCities = refs.showCityMarkers.checked;
+    rp.showLabels = refs.showPlaceLabels.checked;
+    dirty = true; requestRender();
+  }
+
+  function syncRouteUI() {
+    if (!refs.routePoints) return;
+    const rp = ensureRoutePlanner();
+    const text = rp.points.map(p => `${p[0]},${p[1]}`).join('\n');
+    if (document.activeElement !== refs.routePoints) refs.routePoints.value = text;
+    refs.routeMode.value = rp.mode;
+    refs.showGateMarkers.checked = rp.showGates;
+    refs.showCityMarkers.checked = rp.showCities;
+    refs.showPlaceLabels.checked = rp.showLabels;
+    if (pk1Gates.length) {
+      for (const cb of refs.gateBlockList.querySelectorAll('input[type="checkbox"]')) cb.checked = rp.blockedGates.includes(Number(cb.dataset.id));
+    }
+    renderRouteResult();
+  }
+
+  function renderRouteResult() {
+    const rp = ensureRoutePlanner();
+    if (!rp.points.length) { refs.routeResult.textContent = '経路点を2点以上指定してください。'; return; }
+    if (!rp.result) { refs.routeResult.textContent = `${rp.points.length}点を指定中。経路計算を実行してください。`; return; }
+    const r = rp.result;
+    if (r.status !== 'ok') {
+      const labels = { outside:'マップ範囲外です', start_blocked:'開始点が通行不可です', goal_blocked:'終点が通行不可です', no_path:'到達可能な経路がありません', max_expand:'探索上限に達しました', error:'経路計算エラー' };
+      refs.routeResult.innerHTML = `<span class="route-error">${labels[r.status] || r.status}</span>`;
+      return;
+    }
+    const crossed = (r.crossedGates || []).map(id => pk1Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
+    const blocked = rp.blockedGates.map(id => pk1Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
+    refs.routeResult.innerHTML = `<div class="route-ok">最短 ${r.totalSteps} マス</div><table>` +
+      `<tr><td>障害物なし</td><td>${r.directSteps} マス</td></tr>` +
+      `<tr><td>迂回増分</td><td>+${r.totalSteps-r.directSteps}</td></tr>` +
+      `<tr><td>通過関所</td><td>${crossed.length ? crossed.join('、') : '-'}</td></tr>` +
+      `<tr><td>遮断関所</td><td>${blocked.length ? blocked.join('、') : '-'}</td></tr></table>`;
+  }
+
+  function calculateRoute() {
+    if (!routeWorker) { showToast('経路データの読み込み完了を待ってください', true); return; }
+    const points = routePointsFromText();
+    if (!points || points.length < 2) { refs.routeResult.innerHTML = '<span class="route-error">経路点を2点以上指定してください。</span>'; return; }
+    if (points.some(p => p[0] < 0 || p[0] >= PK1_WIDTH || p[1] < 0 || p[1] >= PK1_HEIGHT)) { refs.routeResult.innerHTML = '<span class="route-error">PK1マップ範囲外の座標があります。</span>'; return; }
+    const rp = ensureRoutePlanner(); rp.points = points; rp.mode = refs.routeMode.value; rp.blockedGates = getBlockedGateIds(); rp.path = []; rp.result = null;
+    routeBusy = true; refs.routeCalculateBtn.disabled = true; refs.routeResult.textContent = '経路を探索中…'; refs.routeBadge.textContent = '探索中';
+    routeWorker.postMessage({ type:'route', mode:rp.mode, points:rp.points, blockedGateIds:rp.blockedGates, gates:pk1Gates });
+    requestRender();
+  }
+
+  function handleRouteWorkerMessage(event) {
+    routeBusy = false; refs.routeCalculateBtn.disabled = false; refs.routeBadge.textContent = 'PK1';
+    const r = event.data || {}; const rp = ensureRoutePlanner();
+    if (r.status !== 'ok') { rp.path = []; rp.result = { status:r.status || 'error' }; renderRouteResult(); requestRender(); return; }
+    rp.path = Array.from(r.path || []);
+    const crossed = [];
+    for (const g of pk1Gates) {
+      const xmin=Number(g.xmin),xmax=Number(g.xmax),ymin=Number(g.ymin),ymax=Number(g.ymax);
+      if (rp.path.some(idx => { const x=idx%PK1_WIDTH,y=Math.floor(idx/PK1_WIDTH); return x>=xmin&&x<=xmax&&y>=ymin&&y<=ymax; })) crossed.push(Number(g.id));
+    }
+    rp.result = { status:'ok', totalSteps:Number(r.totalSteps), directSteps:Number(r.directSteps), expanded:Number(r.expanded||0), crossedGates:crossed };
+    dirty = true; renderRouteResult(); requestRender();
+  }
+
+  function undoRoutePoint() {
+    const rp = ensureRoutePlanner(); if (!rp.points.length) return; rp.points.pop(); rp.path=[];rp.result=null;dirty=true;syncRouteUI();requestRender();
+  }
+  function clearRoute() {
+    const rp = ensureRoutePlanner(); rp.points=[];rp.path=[];rp.result=null;dirty=true;syncRouteUI();requestRender();
+  }
+
+  function getBlockedGateIds() {
+    return Array.from(refs.gateBlockList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => Number(cb.dataset.id));
+  }
+  function setAllGateBlocks(value) {
+    for (const cb of refs.gateBlockList.querySelectorAll('input[type="checkbox"]')) cb.checked = value;
+    const rp=ensureRoutePlanner();rp.blockedGates=getBlockedGateIds();rp.path=[];rp.result=null;dirty=true;renderRouteResult();requestRender();
+  }
+  function filterGateBlocks() {
+    const q=refs.gateFilter.value.trim().toLowerCase();
+    for (const item of refs.gateBlockList.querySelectorAll('.gate-block-item')) item.hidden = q && !item.dataset.label.toLowerCase().includes(q);
+  }
+
+  function populatePlaceSearch() {
+    placeLookup = new Map(); refs.placeSearchList.textContent = '';
+    const add=(prefix,obj)=>{ const label=`${prefix}${obj.id} ${obj.name}`; const op=document.createElement('option');op.value=label;refs.placeSearchList.appendChild(op);placeLookup.set(label,obj);placeLookup.set(obj.name,obj); };
+    pk1Cities.forEach(o=>add('城',o)); pk1Gates.forEach(o=>add('関',o));
+  }
+
+  function populateGateBlockList() {
+    refs.gateBlockList.textContent='';
+    for (const g of pk1Gates) {
+      const label=document.createElement('label'); label.className='gate-block-item'; label.dataset.label=`${g.id} ${g.name} ${g.province_names||''}`;
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.dataset.id=String(g.id); cb.checked=ensureRoutePlanner().blockedGates.includes(Number(g.id));
+      cb.addEventListener('change',()=>{ const rp=ensureRoutePlanner();rp.blockedGates=getBlockedGateIds();rp.path=[];rp.result=null;dirty=true;renderRouteResult();requestRender(); });
+      const sp=document.createElement('span'); sp.textContent=`${g.id} ${g.name} (${Math.round(g.center_x)},${Math.round(g.center_y)})`;
+      label.append(cb,sp); refs.gateBlockList.appendChild(label);
+    }
+  }
+
+  function selectedPlace() {
+    const text=refs.placeSearch.value.trim(); if (!text) return null;
+    return placeLookup.get(text) || [...placeLookup.entries()].find(([k])=>k.endsWith(' '+text))?.[1] || null;
+  }
+  function centerSelectedPlace() {
+    const o=selectedPlace(); if (!o) { showToast('城・関所を選択してください',true);return; }
+    const w=gameToWorld(Number(o.center_x),Number(o.center_y)); if(!w){showToast('ゲーム座標が設定されていません',true);return;}
+    const target=Math.max(view.scale,0.9);view.scale=Math.min(MAX_ZOOM,target);view.x=canvas.clientWidth/2-w.x*view.scale;view.y=canvas.clientHeight/2-w.y*view.scale;requestRender();
+  }
+  function addSelectedPlaceToRoute() {
+    const o=selectedPlace(); if(!o){showToast('城・関所を選択してください',true);return;}
+    const rp=ensureRoutePlanner();rp.points.push([Math.round(Number(o.center_x)),Math.round(Number(o.center_y))]);rp.path=[];rp.result=null;dirty=true;syncRouteUI();requestRender();
+  }
+
+  function drawPk1ReferenceLayers(context) {
+    if (!backgroundImage || !project.calibration) return;
+    const rp=ensureRoutePlanner();
+    if (rp.showLabels && labelOverlayImage && labelOverlayImage.complete) {
+      const a=gameToWorld(0,0),b=gameToWorld(PK1_WIDTH,PK1_HEIGHT);
+      if(a&&b){context.save();context.globalAlpha=.96;context.drawImage(labelOverlayImage,a.x,a.y,b.x-a.x,b.y-a.y);context.restore();}
+    }
+    const drawMarker=(o,fill,stroke,rScreen)=>{const w=gameToWorld(Number(o.center_x),Number(o.center_y));if(!w)return;const r=Math.max(2.2,rScreen/view.scale);context.beginPath();context.arc(w.x,w.y,r,0,Math.PI*2);context.fillStyle=fill;context.fill();context.strokeStyle=stroke;context.lineWidth=Math.max(.7,1/view.scale);context.stroke();};
+    if(rp.showCities) for(const c of pk1Cities) drawMarker(c,'#7b201d','#f3d7ca',3.2);
+    if(rp.showGates) for(const g of pk1Gates) drawMarker(g,'#f2a51a','#5d3a00',4.0);
+  }
+
+  function drawRouteOverlay(context) {
+    const rp=ensureRoutePlanner();
+    if (rp.path && rp.path.length > 1) {
+      context.save();context.strokeStyle='#e43b2e';context.lineWidth=Math.max(1.25,3.2/view.scale);context.lineJoin='round';context.lineCap='round';context.beginPath();
+      for(let i=0;i<rp.path.length;i++){const idx=rp.path[i],gx=idx%PK1_WIDTH+.5,gy=Math.floor(idx/PK1_WIDTH)+.5,w=gameToWorld(gx,gy);if(!w)continue;if(i)context.lineTo(w.x,w.y);else context.moveTo(w.x,w.y);}context.stroke();context.restore();
+    }
+    if (rp.points) for(let i=0;i<rp.points.length;i++){const [gx,gy]=rp.points[i],w=gameToWorld(gx+.5,gy+.5);if(!w)continue;context.save();context.fillStyle=i===0?'#23b967':(i===rp.points.length-1?'#e13d36':'#ffd54d');context.strokeStyle='#fff';context.lineWidth=Math.max(1,1.4/view.scale);context.beginPath();context.arc(w.x,w.y,Math.max(3,5.8/view.scale),0,Math.PI*2);context.fill();context.stroke();if(view.scale>.55){context.fillStyle='#101216';context.font=`700 ${Math.max(8,11/view.scale)}px "Noto Sans JP",sans-serif`;context.textAlign='center';context.textBaseline='middle';context.fillText(String(i+1),w.x,w.y);}context.restore();}
+  }
+
   function onKeyDown(e) {
     const tag = e.target && e.target.tagName;
     const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
@@ -1502,6 +1840,8 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
       setTool('select');
     } else if (e.key.toLowerCase() === 'h') {
       setTool('pan');
+    } else if (e.key.toLowerCase() === 'r') {
+      setTool('route');
     } else if (e.key === 'Escape') {
       drawPreview = null;
       interaction = null;

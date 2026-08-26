@@ -1,0 +1,87 @@
+const W=2000,H=3250,N=W*H;
+let bits={land:null,all:null};
+let gScore=new Uint32Array(N);
+let seen=new Uint16Array(N);
+let parentDir=new Uint8Array(N);
+let generation=1;
+const dirs=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+
+async function loadBits(mode){
+  if(bits[mode]) return bits[mode];
+  const r=await fetch(`data/passable_${mode}.bit`);
+  if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  bits[mode]=new Uint8Array(await r.arrayBuffer());
+  return bits[mode];
+}
+function basePassable(bitset,idx){return ((bitset[idx>>3]>>(idx&7))&1)!==0;}
+function makeBlocked(gates,ids){
+  const wanted=new Set(ids||[]), out=new Set();
+  if(!wanted.size) return out;
+  for(const g of gates){
+    const id=Number(g.id); if(!wanted.has(id)) continue;
+    for(let y=Number(g.ymin);y<=Number(g.ymax);y++) for(let x=Number(g.xmin);x<=Number(g.xmax);x++) out.add(y*W+x);
+  }
+  return out;
+}
+function heuristic(x,y,gx,gy){return Math.max(Math.abs(x-gx),Math.abs(y-gy));}
+class Heap{
+  constructor(){this.i=[];this.f=[];this.g=[];}
+  get length(){return this.i.length;}
+  push(idx,fv,gv){
+    let p=this.i.length; this.i.push(idx);this.f.push(fv);this.g.push(gv);
+    while(p){let q=(p-1)>>1;if(this.f[q]<=fv)break;this.i[p]=this.i[q];this.f[p]=this.f[q];this.g[p]=this.g[q];p=q;}
+    this.i[p]=idx;this.f[p]=fv;this.g[p]=gv;
+  }
+  pop(){
+    const n=this.i.length;if(!n)return null;
+    const oi=this.i[0],of=this.f[0],og=this.g[0];
+    const li=this.i.pop(),lf=this.f.pop(),lg=this.g.pop();
+    if(n>1){let p=0;while(true){let a=p*2+1;if(a>=n-1)break;let b=a+1,c=(b<n-1&&this.f[b]<this.f[a])?b:a;if(this.f[c]>=lf)break;this.i[p]=this.i[c];this.f[p]=this.f[c];this.g[p]=this.g[c];p=c;}this.i[p]=li;this.f[p]=lf;this.g[p]=lg;}
+    return [oi,of,og];
+  }
+}
+function bumpGeneration(){generation++;if(generation>=65535){seen.fill(0);generation=1;}}
+function route(bitset,start,goal,blocked,maxExpand=3000000){
+  bumpGeneration();
+  const [sx,sy]=start,[gx,gy]=goal;
+  if(sx<0||sx>=W||sy<0||sy>=H||gx<0||gx>=W||gy<0||gy>=H)return {status:'outside'};
+  const sidx=sy*W+sx,gidx=gy*W+gx;
+  const can=i=>basePassable(bitset,i)&&!blocked.has(i);
+  if(!can(sidx))return {status:'start_blocked'};
+  if(!can(gidx))return {status:'goal_blocked'};
+  const heap=new Heap();seen[sidx]=generation;gScore[sidx]=0;parentDir[sidx]=0;heap.push(sidx,heuristic(sx,sy,gx,gy),0);
+  let expanded=0;
+  while(heap.length){
+    const item=heap.pop();const idx=item[0],pg=item[2];
+    if(seen[idx]!==generation||gScore[idx]!==pg)continue;
+    if(idx===gidx){
+      const rev=[];let cur=idx;rev.push(cur);
+      while(cur!==sidx){const code=parentDir[cur]-1;if(code<0)return {status:'parent_error'};const [dx,dy]=dirs[code];const x=cur%W,y=Math.floor(cur/W);cur=(y-dy)*W+(x-dx);rev.push(cur);}
+      rev.reverse();return {status:'ok',path:rev,steps:rev.length-1,expanded};
+    }
+    if(++expanded>maxExpand)return {status:'max_expand',expanded};
+    const x=idx%W,y=Math.floor(idx/W),ng=pg+1;
+    for(let di=0;di<8;di++){
+      const dx=dirs[di][0],dy=dirs[di][1],nx=x+dx,ny=y+dy;
+      if(nx<0||nx>=W||ny<0||ny>=H)continue;
+      const ni=ny*W+nx;if(!can(ni))continue;
+      if(seen[ni]!==generation||ng<gScore[ni]){seen[ni]=generation;gScore[ni]=ng;parentDir[ni]=di+1;heap.push(ni,ng+heuristic(nx,ny,gx,gy),ng);}
+    }
+  }
+  return {status:'no_path',expanded};
+}
+self.onmessage=async e=>{
+  const m=e.data;if(m.type!=='route')return;
+  try{
+    const bitset=await loadBits(m.mode||'land');const blocked=makeBlocked(m.gates||[],m.blockedGateIds||[]);const pts=m.points||[];
+    let total=0,direct=0,expanded=0,full=[],segments=[];
+    for(let k=0;k<pts.length-1;k++){
+      direct+=Math.max(Math.abs(pts[k][0]-pts[k+1][0]),Math.abs(pts[k][1]-pts[k+1][1]));
+      const r=route(bitset,pts[k],pts[k+1],blocked,m.maxExpand||3000000);expanded+=r.expanded||0;
+      segments.push({start:pts[k],goal:pts[k+1],status:r.status,steps:r.steps??null,expanded:r.expanded||0});
+      if(r.status!=='ok'){self.postMessage({type:'result',status:r.status,totalSteps:null,directSteps:direct,segments,expanded});return;}
+      total+=r.steps;full=full.concat(k?r.path.slice(1):r.path);
+    }
+    const arr=new Uint32Array(full);self.postMessage({type:'result',status:'ok',totalSteps:total,directSteps:direct,segments,expanded,path:arr},[arr.buffer]);
+  }catch(err){self.postMessage({type:'result',status:'error',message:String(err&&err.message||err)});}
+};

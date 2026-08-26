@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#15181d">
   <meta name="robots" content="noindex, nofollow">
-  <title>真戦 作戦図エディタ</title>
+  <title>真戦 戦略マップ</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -14,8 +14,8 @@
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">戦</div>
         <div>
-          <h1>真戦 作戦図エディタ</h1>
-          <p>作戦の作成・保存・共有</p>
+          <h1>真戦 戦略マップ</h1>
+          <p>PK1マップ・経路探索・作戦作成</p>
         </div>
       </div>
 
@@ -26,7 +26,8 @@
 
       <nav class="header-actions" aria-label="ファイル操作">
         <button id="newProjectBtn" class="button ghost" type="button">新規</button>
-        <button id="loadMapBtn" class="button" type="button">マップ画像</button>
+        <button id="builtinMapBtn" class="button" type="button">PK1マップ</button>
+        <button id="loadMapBtn" class="button ghost" type="button">背景画像</button>
         <button id="saveProjectBtn" class="button" type="button">作戦保存</button>
         <button id="loadProjectBtn" class="button" type="button">作戦読込</button>
         <div class="menu-wrap">
@@ -80,6 +81,13 @@
           <button class="tool-button" data-tool="text" type="button"><span class="tool-icon">T</span><span>メモ</span></button>
         </div>
 
+        <div class="tool-section">
+          <div class="section-title">経路探索</div>
+          <button class="tool-button" data-tool="route" type="button" title="経路点を追加 (R)">
+            <span class="tool-icon">路</span><span>経路</span>
+          </button>
+        </div>
+
         <div class="tool-section compact-actions">
           <button id="undoBtn" class="small-action" type="button" disabled title="元に戻す (Ctrl+Z)">↶</button>
           <button id="redoBtn" class="small-action" type="button" disabled title="やり直す (Ctrl+Y)">↷</button>
@@ -92,10 +100,10 @@
         <div id="emptyState" class="empty-state">
           <div class="empty-card">
             <div class="empty-icon">地図</div>
-            <h2>最初にマップ画像を読み込んでください</h2>
-            <p>駅路・城・関所・橋が表示される倍率で作成した結合済み画像を使用します。</p>
-            <button id="emptyLoadMapBtn" class="button accent" type="button">マップ画像を選択</button>
-            <a href="map-maker.html" class="text-link">複数スクリーンショットを結合する</a>
+            <h2>PK1標準マップを読み込めませんでした</h2>
+            <p>通常はAPK/EBDLから復元したPK1マップが自動表示されます。必要なら任意の背景画像にも切り替えられます。</p>
+            <button id="emptyBuiltinMapBtn" class="button accent" type="button">PK1標準マップを再読込</button>
+            <button id="emptyLoadMapBtn" class="button ghost" type="button">背景画像を選択</button>
           </div>
         </div>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -163,6 +171,61 @@
           </div>
         </form>
 
+        <section class="panel-section route-section">
+          <div class="section-heading">
+            <h3>経路探索</h3>
+            <span id="routeBadge" class="count-badge">PK1</span>
+          </div>
+          <p class="muted route-note">左の「経路」を選んでマップをクリックすると経路点を追加できます。座標を直接入力することもできます。</p>
+
+          <label class="route-field">
+            <span>経路点（x,y / 1行1点）</span>
+            <textarea id="routePoints" rows="4" spellcheck="false" placeholder="618,1697&#10;669,1633&#10;726,1571"></textarea>
+          </label>
+          <div class="route-buttons">
+            <button id="routeCalculateBtn" class="button accent" type="button">経路計算</button>
+            <button id="routeUndoPointBtn" class="button ghost" type="button">1点戻す</button>
+            <button id="routeClearBtn" class="button ghost" type="button">クリア</button>
+          </div>
+
+          <label class="route-field inline-field">
+            <span>移動モード</span>
+            <select id="routeMode">
+              <option value="land">陸路のみ</option>
+              <option value="all">航路も許可</option>
+            </select>
+          </label>
+
+          <label class="route-field">
+            <span>城・関所検索</span>
+            <div class="route-search-row">
+              <input id="placeSearch" list="placeSearchList" autocomplete="off" placeholder="例：榛名関所">
+              <button id="placeCenterBtn" class="button ghost" type="button">表示</button>
+              <button id="placeAddBtn" class="button ghost" type="button">経路点</button>
+            </div>
+          </label>
+          <datalist id="placeSearchList"></datalist>
+
+          <details class="route-details">
+            <summary>通行不可にする関所</summary>
+            <div class="route-buttons compact">
+              <button id="gateBlockClearBtn" class="button ghost" type="button">全解除</button>
+              <button id="gateBlockAllBtn" class="button ghost" type="button">全遮断</button>
+            </div>
+            <input id="gateFilter" class="route-filter" type="text" autocomplete="off" placeholder="関所名で絞り込み">
+            <div id="gateBlockList" class="gate-block-list"></div>
+          </details>
+
+          <details class="route-details">
+            <summary>マップ表示</summary>
+            <label class="route-check"><input id="showGateMarkers" type="checkbox" checked><span>関所マーカー</span></label>
+            <label class="route-check"><input id="showCityMarkers" type="checkbox"><span>城マーカー</span></label>
+            <label class="route-check"><input id="showPlaceLabels" type="checkbox" checked><span>日本語名称</span></label>
+          </details>
+
+          <div id="routeResult" class="route-result">経路点を2点以上指定してください。</div>
+        </section>
+
         <section class="panel-section phase-filter-section">
           <div class="section-heading">
             <h3>表示する段階</h3>
@@ -217,15 +280,19 @@
       </div>
       <div class="modal-body help-content">
         <section>
-          <h3>1. 背景マップ</h3>
-          <p>「マップ画像」から、結合済みの真戦マップ画像を読み込みます。画像は外部へ送信されず、ブラウザ内で処理します。</p>
+          <h3>1. PK1標準マップ</h3>
+          <p>APK/EBDLから復元した2000×3250のPK1論理マップを内蔵しています。起動時に自動で読み込み、ゲーム座標も設定済みです。任意の背景画像へ切り替えることもできます。</p>
         </section>
         <section>
-          <h3>2. 作戦記号</h3>
+          <h3>2. 経路探索</h3>
+          <p>左の「経路」を選び、開始・経由・到着地点を順番にクリックします。「経路計算」で山・河川・海などの通行不可マスを避けた8方向の最短経路を求めます。関所を個別に遮断して迂回路も比較できます。</p>
+        </section>
+        <section>
+          <h3>3. 作戦記号</h3>
           <p>左のツールを選び、マップ上をクリックまたはドラッグして配置します。選択ツールでは移動と属性編集ができます。</p>
         </section>
         <section>
-          <h3>3. 保存と共有</h3>
+          <h3>4. 保存と共有</h3>
           <p>「作戦保存」は編集可能な <code>.nssmap</code> ファイルです。「共有用HTML」は閲覧専用の単一HTMLを作成します。Discord等でファイル共有できます。</p>
         </section>
         <section>
@@ -235,7 +302,7 @@
             <div><dt>右ドラッグ / Space＋ドラッグ</dt><dd>マップ移動</dd></div>
             <div><dt>Ctrl＋Z / Ctrl＋Y</dt><dd>元に戻す / やり直す</dd></div>
             <div><dt>Delete</dt><dd>選択記号を削除</dd></div>
-            <div><dt>V / H</dt><dd>選択 / マップ移動</dd></div>
+            <div><dt>V / H / R</dt><dd>選択 / マップ移動 / 経路点追加</dd></div>
           </dl>
         </section>
       </div>
@@ -252,7 +319,7 @@
         <button class="icon-button" value="cancel" aria-label="閉じる">×</button>
       </div>
       <div class="modal-body">
-        <p class="modal-note">画像上の左上と右下に対応するゲーム内座標を入力します。マップ画像全体がゲーム座標軸と平行であることが前提です。</p>
+        <p class="modal-note">任意の背景画像を使う場合だけ、画像上の左上と右下に対応するゲーム内座標を入力します。PK1標準マップは設定済みです。</p>
         <div class="coordinate-grid">
           <fieldset>
             <legend>画像の左上</legend>

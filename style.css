@@ -315,3 +315,48 @@ button { color: inherit; }
   .status-bar { font-size: 9px; }
   #gamePosition { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+/* PK1 route planner */
+#mapCanvas[data-tool="route"] { cursor: crosshair; }
+.route-section { background: linear-gradient(180deg, rgba(201,75,56,.045), transparent 120px); }
+.route-note { margin-bottom: 10px; }
+.route-field { display: block; margin: 10px 0 0; }
+.route-field > span { display: block; margin-bottom: 5px; color: #b8c0cd; font-size: 11px; }
+.route-field textarea,
+.route-field input,
+.route-field select,
+.route-filter {
+  width: 100%; color: var(--text); background: #101318; border: 1px solid var(--line); border-radius: 6px; outline: none;
+}
+.route-field textarea { min-height: 78px; padding: 8px 9px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; line-height: 1.5; }
+.route-field input, .route-field select, .route-filter { height: 34px; padding: 0 9px; }
+.route-field input:focus, .route-field textarea:focus, .route-field select:focus, .route-filter:focus { border-color: #687386; }
+.inline-field { display: grid; grid-template-columns: 82px 1fr; align-items: center; gap: 8px; }
+.inline-field > span { margin: 0; }
+.route-buttons { display: flex; gap: 6px; margin-top: 7px; }
+.route-buttons .button { min-width: 0; flex: 1 1 auto; padding: 0 7px; font-size: 11px; }
+.route-buttons.compact .button { height: 30px; }
+.route-search-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 5px; }
+.route-search-row .button { height: 34px; padding: 0 8px; font-size: 11px; }
+.route-details { margin-top: 12px; padding-top: 9px; border-top: 1px solid #2a3039; }
+.route-details summary { cursor: pointer; color: #cbd2dd; font-size: 11px; font-weight: 700; }
+.route-filter { margin-top: 7px; }
+.gate-block-list { max-height: 190px; margin-top: 6px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; background: #101318; }
+.gate-block-item { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 3px 6px; font-size: 10px; }
+.gate-block-item:hover { background: #20252d; }
+.gate-block-item input { width: auto; margin: 0; accent-color: var(--accent); }
+.gate-block-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.route-check { display: flex; align-items: center; gap: 7px; margin: 8px 0; color: #c2c9d3; font-size: 11px; }
+.route-check input { width: auto; margin: 0; accent-color: var(--accent); }
+.route-result { margin-top: 11px; padding: 9px 10px; min-height: 42px; border: 1px solid var(--line); border-radius: 7px; background: #11151a; color: #c6cdd7; font-size: 11px; line-height: 1.55; }
+.route-result .route-ok { color: #bfe5c7; font-weight: 700; }
+.route-result .route-error { color: #ffaaa6; font-weight: 700; }
+.route-result table { width: 100%; margin-top: 5px; border-collapse: collapse; }
+.route-result td { padding: 3px 0; border-top: 1px solid #262c35; vertical-align: top; }
+.route-result td:last-child { padding-left: 8px; text-align: right; color: #edf1f6; }
+.route-busy { opacity: .65; pointer-events: none; }
+
+@media (max-width: 900px) {
+  .route-section { padding-bottom: 22px; }
+  .gate-block-list { max-height: 150px; }
+}
