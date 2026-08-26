@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 7;
+  const APP_VERSION = 9;
   const MAX_HISTORY = 80;
   const MIN_ZOOM = 0.03;
   const MAX_ZOOM = 12;
@@ -13,6 +13,34 @@
   const PK1_CALIBRATION = { topLeft: { x: 0, y: 0 }, bottomRight: { x: PK1_WIDTH, y: PK1_HEIGHT } };
   const SCENARIO_KEYS = ['A', 'B', 'C'];
   const PHASES = ['共通', '第1段階', '第2段階', '第3段階', '予備'];
+  const PK1_ROUTE_WORKER_SOURCE = String.raw`
+const W=2000,H=3250,N=W*H;
+let bitset=null;
+let gScore=new Uint32Array(N),seen=new Uint16Array(N),parentDir=new Uint8Array(N),generation=1;
+const dirs=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+function basePassable(i){return !!bitset&&((bitset[i>>3]>>(i&7))&1)!==0}
+function makeBlocked(gates,ids){const wanted=new Set(ids||[]),out=new Set();if(!wanted.size)return out;for(const g of gates){if(!wanted.has(Number(g.id)))continue;for(let y=Number(g.ymin);y<=Number(g.ymax);y++)for(let x=Number(g.xmin);x<=Number(g.xmax);x++)out.add(y*W+x)}return out}
+function heuristic(x,y,gx,gy){return Math.max(Math.abs(x-gx),Math.abs(y-gy))}
+class Heap{constructor(){this.i=[];this.f=[];this.g=[]}get length(){return this.i.length}push(idx,fv,gv){let p=this.i.length;this.i.push(idx);this.f.push(fv);this.g.push(gv);while(p){let q=(p-1)>>1;if(this.f[q]<=fv)break;this.i[p]=this.i[q];this.f[p]=this.f[q];this.g[p]=this.g[q];p=q}this.i[p]=idx;this.f[p]=fv;this.g[p]=gv}pop(){const n=this.i.length;if(!n)return null;const oi=this.i[0],of=this.f[0],og=this.g[0],li=this.i.pop(),lf=this.f.pop(),lg=this.g.pop();if(n>1){let p=0;while(true){let a=p*2+1;if(a>=n-1)break;let b=a+1,c=(b<n-1&&this.f[b]<this.f[a])?b:a;if(this.f[c]>=lf)break;this.i[p]=this.i[c];this.f[p]=this.f[c];this.g[p]=this.g[c];p=c}this.i[p]=li;this.f[p]=lf;this.g[p]=lg}return[oi,of,og]}}
+function bump(){generation++;if(generation>=65535){seen.fill(0);generation=1}}
+function route(start,goal,blocked,penalty,maxExpand=3000000,penaltyCost=4){
+  bump();const[sx,sy]=start,[gx,gy]=goal;
+  if(sx<0||sx>=W||sy<0||sy>=H||gx<0||gx>=W||gy<0||gy>=H)return{status:'outside'};
+  const sidx=sy*W+sx,gidx=gy*W+gx,can=i=>basePassable(i)&&!blocked.has(i);
+  if(!can(sidx))return{status:'start_blocked'};if(!can(gidx))return{status:'goal_blocked'};
+  const heap=new Heap();seen[sidx]=generation;gScore[sidx]=0;parentDir[sidx]=0;heap.push(sidx,heuristic(sx,sy,gx,gy),0);let expanded=0;
+  while(heap.length){const item=heap.pop(),idx=item[0],pg=item[2];if(seen[idx]!==generation||gScore[idx]!==pg)continue;
+    if(idx===gidx){const rev=[idx];let cur=idx;while(cur!==sidx){const code=parentDir[cur]-1;if(code<0)return{status:'parent_error'};const[dx,dy]=dirs[code],x=cur%W,y=Math.floor(cur/W);cur=(y-dy)*W+(x-dx);rev.push(cur)}rev.reverse();return{status:'ok',path:rev,steps:rev.length-1,cost:pg,expanded}}
+    if(++expanded>maxExpand)return{status:'max_expand',expanded};
+    const x=idx%W,y=Math.floor(idx/W);
+    for(let di=0;di<8;di++){const dx=dirs[di][0],dy=dirs[di][1],nx=x+dx,ny=y+dy;if(nx<0||nx>=W||ny<0||ny>=H)continue;const ni=ny*W+nx;if(!can(ni))continue;const extra=penalty&&penalty.has(ni)?penaltyCost:0,ng=pg+1+extra;if(seen[ni]!==generation||ng<gScore[ni]){seen[ni]=generation;gScore[ni]=ng;parentDir[ni]=di+1;heap.push(ni,ng+heuristic(nx,ny,gx,gy),ng)}}
+  }
+  return{status:'no_path',expanded}
+}
+function routeAll(points,blocked,penalty,maxExpand){let total=0,expanded=0,full=[],segments=[];for(let k=0;k<points.length-1;k++){const r=route(points[k],points[k+1],blocked,penalty,maxExpand);expanded+=r.expanded||0;segments.push({start:points[k],goal:points[k+1],status:r.status,steps:r.steps??null,expanded:r.expanded||0});if(r.status!=='ok')return{status:r.status,totalSteps:null,segments,expanded};total+=r.steps;full=full.concat(k?r.path.slice(1):r.path)}return{status:'ok',totalSteps:total,segments,expanded,path:full}}
+function addPenalty(path,set){if(!path||path.length<3)return;for(let i=1;i<path.length-1;i++)set.add(path[i])}
+self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.buffer);self.postMessage({type:'ready'});return}if(m.type!=='route')return;try{if(!bitset)throw new Error('route data not initialized');const blocked=makeBlocked(m.gates||[],m.blockedGateIds||[]),pts=m.points||[],routeCount=Math.max(1,Math.min(3,Number(m.routeCount)||1));const penalty=new Set(),routes=[];for(let i=0;i<routeCount;i++){const r=routeAll(pts,blocked,penalty,m.maxExpand||3000000);if(r.status!=='ok'){if(i===0){self.postMessage({type:'result',status:r.status});return}break}const packed=new Uint32Array(r.path);routes.push({totalSteps:r.totalSteps,expanded:r.expanded,path:packed});addPenalty(r.path,penalty)}const transfers=routes.map(r=>r.path.buffer);self.postMessage({type:'result',status:'ok',routes},transfers)}catch(err){self.postMessage({type:'result',status:'error',message:String(err&&err.message||err)})}}
+`;
   const PK1_DISPLAY_TRANSFORM = { m00:1.3811020352, m01:-1.1998330080000001, m10:0.7361070080000001, m11:0.568297248, tx:2225.7348256, ty:-536.8040288000001, im00:0.34068904150606916, im01:0.7192889969139248, im10:-0.44128946934724644, im11:0.8279581332661488 };
 
   const TYPE_META = {
@@ -21,12 +49,13 @@
     garrison: { name: '駐屯',   label: '駐屯地点', color: '#2f80d0', size: 30, lineWidth: 3, symbol: '駐' },
     camp:     { name: '幕舎',   label: '幕舎建設', color: '#3aa86d', size: 30, lineWidth: 3, symbol: '幕' },
     fort:     { name: '陣城',   label: '陣城建設', color: '#9267cf', size: 30, lineWidth: 3, symbol: '陣' },
+    relocate: { name: '遷城',   label: '遷城予定', color: '#5f7fd8', size: 30, lineWidth: 3, symbol: '遷' },
     castle:   { name: '城',     label: '攻略対象の城', color: '#8b6948', size: 58, lineWidth: 5, symbol: '城' },
     gate:     { name: '関所',   label: '攻略対象の関所', color: '#a15f3e', size: 58, lineWidth: 5, symbol: '関' },
     bridge:   { name: '橋',     label: '攻略対象の橋', color: '#36818b', size: 58, lineWidth: 5, symbol: '橋' },
     station:  { name: '駅路',   label: '攻略対象の駅路', color: '#b17b2f', size: 58, lineWidth: 5, symbol: '駅' },
     arrow:    { name: '侵攻',   label: '侵攻ルート', color: '#2f80d0', size: 24, lineWidth: 5, symbol: '➜' },
-    defense:  { name: '防衛線', label: '防衛線', color: '#e0b43c', size: 24, lineWidth: 4, symbol: '防' },
+    defense:  { name: '防衛線', label: '防衛線', color: '#e05bd8', size: 24, lineWidth: 4, symbol: '防' },
     area:     { name: '範囲',   label: '作戦範囲', color: '#d9a52a', size: 24, lineWidth: 3, symbol: '範' },
     target:   { name: '目標',   label: '攻略目標', color: '#e3563a', size: 32, lineWidth: 3, symbol: '目' },
     text:     { name: 'メモ',   label: '作戦メモ', color: '#f2f4f8', size: 20, lineWidth: 2, symbol: 'T' }
@@ -389,6 +418,9 @@
         break;
       case 'fort':
         drawFort(context, obj);
+        break;
+      case 'relocate':
+        drawMapPoint(context, obj);
         break;
       case 'castle':
       case 'gate':
@@ -972,7 +1004,7 @@
       const gx = Math.round(game.x), gy = Math.round(game.y);
       if (gx < 0 || gx >= PK1_WIDTH || gy < 0 || gy >= PK1_HEIGHT) { showToast('PK1マップ範囲外です', true); return; }
       const rp = ensureRoutePlanner();
-      rp.points.push([gx, gy]); rp.path = []; rp.result = null;
+      rp.points.push([gx, gy]); rp.path = []; rp.altPaths = []; rp.result = null;
       dirty = true; syncRouteUI(); requestRender();
       return;
     }
@@ -1971,37 +2003,40 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
 
   async function loadPk1Assets() {
     const embedded = window.PK1_EMBEDDED || null;
-    if (embedded) {
-      pk1Cities = embedded.cities || []; pk1Gates = embedded.gates || []; pk1Regions = embedded.regions || []; pk1Land = embedded.land || [];
-    } else {
-      const [cities, gates, regions, land] = await Promise.all([
-        fetch('data/cities.json').then(checkFetch).then(r => r.json()), fetch('data/gates.json').then(checkFetch).then(r => r.json()),
-        fetch('data/regions.json').then(checkFetch).then(r => r.json()), fetch('data/land_metadata.json').then(checkFetch).then(r => r.json())
-      ]);
-      pk1Cities=cities; pk1Gates=gates; pk1Regions=regions; pk1Land=land;
-    }
-    populatePlaceSearch(); populateGateBlockList();
+    if (!embedded) throw new Error('PK1 embedded data is missing');
+
+    pk1Cities = embedded.cities || [];
+    pk1Gates = embedded.gates || [];
+    pk1Regions = embedded.regions || [];
+    pk1Land = embedded.land || [];
+    populatePlaceSearch();
+    populateGateBlockList();
+
     if (!routeWorker) {
-      const workerSource = window.PK1_ROUTE_WORKER_SOURCE;
-      if (!workerSource) throw new Error('経路探索エンジンが読み込まれていません');
-      const workerUrl = URL.createObjectURL(new Blob([workerSource], {type:'text/javascript'}));
+      if (!embedded.passableLandB64) throw new Error('PK1 passable land data is missing');
+      const workerSource = PK1_ROUTE_WORKER_SOURCE;
+      const workerUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
       routeWorker = new Worker(workerUrl);
       routeWorker.onmessage = event => {
-        if (event.data && event.data.type === 'ready') { routeWorkerReady=true; refs.routeBadge.textContent='PK1'; return; }
+        if (event.data && event.data.type === 'ready') {
+          routeWorkerReady = true;
+          refs.routeBadge.textContent = 'PK1';
+          return;
+        }
         handleRouteWorkerMessage(event);
       };
-      routeWorker.onerror = event => { routeBusy=false; routeWorkerReady=false; refs.routeCalculateBtn.disabled=false; refs.routeResult.innerHTML='<span class="route-error">経路探索の初期化に失敗しました。</span>'; console.error(event); };
-      let bits;
-      if (embedded && embedded.passableLandB64) bits = decodeBase64Bytes(embedded.passableLandB64);
-      else bits = new Uint8Array(await fetch('data/passable_land.bit').then(checkFetch).then(r=>r.arrayBuffer()));
-      routeWorker.postMessage({type:'init',buffer:bits.buffer},[bits.buffer]);
+      routeWorker.onerror = event => {
+        routeBusy = false;
+        routeWorkerReady = false;
+        refs.routeCalculateBtn.disabled = false;
+        refs.routeResult.innerHTML = '<span class="route-error">経路探索の初期化に失敗しました。</span>';
+        console.error(event);
+      };
+      const bits = decodeBase64Bytes(embedded.passableLandB64);
+      routeWorker.postMessage({ type: 'init', buffer: bits.buffer }, [bits.buffer]);
     }
-    syncRouteUI(); requestRender();
-  }
-
-  function checkFetch(response) {
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.url}`);
-    return response;
+    syncRouteUI();
+    requestRender();
   }
 
   function activateBuiltinMap() {
@@ -2105,14 +2140,14 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
   }
 
   function calculateRoute(silent = false) {
-    if (!routeWorker || !routeWorkerReady) {
-      if (!silent) refs.routeResult.innerHTML = '<span class="route-error">経路データを初期化中です。1〜2秒後にもう一度お試しください。</span>';
-      return;
-    }
     const points = routePointsFromText();
     if (!points) { if (!silent) refs.routeResult.innerHTML = '<span class="route-error">座標は x,y 形式で入力してください。</span>'; return; }
     if (points.length < 2) { if (!silent) refs.routeResult.innerHTML = '<span class="route-error">経路点を2点以上指定してください。</span>'; return; }
     if (points.some(p => p[0] < 0 || p[0] >= PK1_WIDTH || p[1] < 0 || p[1] >= PK1_HEIGHT)) { if (!silent) refs.routeResult.innerHTML = '<span class="route-error">PK1マップ範囲外の座標があります。</span>'; return; }
+    if (!routeWorker || !routeWorkerReady) {
+      if (!silent) refs.routeResult.innerHTML = '<span class="route-error">経路データを初期化中です。1〜2秒後にもう一度お試しください。</span>';
+      return;
+    }
     const rp = ensureRoutePlanner(); rp.points = points; rp.mode = 'land'; rp.blockedGates = getBlockedGateIds(); rp.path = []; rp.altPaths = []; rp.result = null;
     routeBusy = true; refs.routeCalculateBtn.disabled = true; refs.routeResult.textContent = '経路を探索中…'; refs.routeBadge.textContent = '探索中';
     const routeCount = rp.showAlt3 ? 3 : (rp.showAlt2 ? 2 : 1);
@@ -2202,7 +2237,7 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
   }
   function addSelectedPlaceToRoute() {
     const o=selectedPlace(); if(!o){showToast('城・関所を選択してください',true);return;}
-    const rp=ensureRoutePlanner();rp.points.push([Math.round(Number(o.center_x)),Math.round(Number(o.center_y))]);rp.path=[];rp.result=null;dirty=true;syncRouteUI();requestRender();
+    const rp=ensureRoutePlanner();rp.points.push([Math.round(Number(o.center_x)),Math.round(Number(o.center_y))]);rp.path=[];rp.altPaths=[];rp.result=null;dirty=true;syncRouteUI();requestRender();
   }
 
   function hitPk1PlaceAtScreen(sx, sy) {
