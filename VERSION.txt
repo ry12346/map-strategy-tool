@@ -1,3 +1,1 @@
-真戦 戦略マップ
-Version: 2.0.0-pk1
-Build date: 2026-08-26
+PK1 v3 - offline route/search fix - 2026-08-26
