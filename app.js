@@ -1,10 +1,12 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 12;
+  const APP_VERSION = 13;
   const MAX_HISTORY = 80;
   const MIN_ZOOM = 0.03;
   const MAX_ZOOM = 12;
+  const TOUCH_LONG_PRESS_MS = 550;
+  const TOUCH_MOVE_CANCEL_PX = 10;
   const PK1_WIDTH = 2000;
   const PK1_HEIGHT = 3250;
   const PK1_DISPLAY_WIDTH = 2595;
@@ -120,6 +122,10 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   let routeBusy = false;
   let contextPlace = null;
   let pk1LabelHitBoxes = [];
+  const activeTouchPointers = new Map();
+  let pinchGesture = null;
+  let longPressState = null;
+  let suppressTouchPointerId = null;
 
   document.addEventListener('DOMContentLoaded', init);
 
@@ -925,6 +931,71 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     requestRender();
   }
 
+  function cancelLongPress(pointerId = null) {
+    if (!longPressState) return;
+    if (pointerId != null && longPressState.pointerId !== pointerId) return;
+    clearTimeout(longPressState.timer);
+    longPressState = null;
+  }
+
+  function scheduleLongPress(e, screen) {
+    cancelLongPress();
+    const state = {
+      pointerId: e.pointerId,
+      startScreen: { x: screen.x, y: screen.y },
+      timer: 0
+    };
+    state.timer = window.setTimeout(() => {
+      if (longPressState !== state || pinchGesture || activeTouchPointers.size !== 1) return;
+      const current = activeTouchPointers.get(state.pointerId);
+      if (!current) return;
+      const moved = Math.hypot(current.x - state.startScreen.x, current.y - state.startScreen.y);
+      if (moved > TOUCH_MOVE_CANCEL_PX) return;
+      if (openPlaceContextMenuAt(current.clientX, current.clientY, { x: current.x, y: current.y })) {
+        suppressTouchPointerId = state.pointerId;
+        interaction = null;
+        canvas.classList.remove('panning');
+        canvas.classList.remove('pinching');
+        canvas.style.cursor = '';
+      }
+      longPressState = null;
+    }, TOUCH_LONG_PRESS_MS);
+    longPressState = state;
+  }
+
+  function startPinchGesture() {
+    cancelLongPress();
+    const entries = Array.from(activeTouchPointers.entries()).slice(0, 2);
+    if (entries.length < 2) return;
+    const [aId, a] = entries[0], [bId, b] = entries[1];
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    pinchGesture = {
+      ids: [aId, bId],
+      startDistance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+      startScale: view.scale,
+      anchorWorld: screenToWorld(mid.x, mid.y, true)
+    };
+    interaction = null;
+    canvas.classList.remove('panning');
+    canvas.classList.add('pinching');
+    canvas.style.cursor = '';
+  }
+
+  function updatePinchGesture() {
+    if (!pinchGesture) return false;
+    const a = activeTouchPointers.get(pinchGesture.ids[0]);
+    const b = activeTouchPointers.get(pinchGesture.ids[1]);
+    if (!a || !b) return false;
+    const midX = (a.x + b.x) / 2, midY = (a.y + b.y) / 2;
+    const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+    const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchGesture.startScale * distance / pinchGesture.startDistance));
+    view.scale = next;
+    view.x = midX - pinchGesture.anchorWorld.x * next;
+    view.y = midY - pinchGesture.anchorWorld.y * next;
+    requestRender();
+    return true;
+  }
+
   function onPointerDown(e) {
     if (!backgroundImage) return;
     if (e.pointerType === 'mouse' && e.button === 2) return;
@@ -932,6 +1003,16 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     const screen = pointerScreen(e);
+
+    if (e.pointerType === 'touch') {
+      activeTouchPointers.set(e.pointerId, { x: screen.x, y: screen.y, clientX: e.clientX, clientY: e.clientY });
+      if (activeTouchPointers.size >= 2) {
+        startPinchGesture();
+        return;
+      }
+      scheduleLongPress(e, screen);
+    }
+
     const world = screenToWorld(screen.x, screen.y, true);
     const forcePan = activeTool === 'pan' || spacePressed || e.button === 1;
     const handle = !forcePan ? hitSelectionHandle(world.x, world.y) : null;
@@ -974,6 +1055,20 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
 
   function onPointerMove(e) {
     const screen = pointerScreen(e);
+
+    if (e.pointerType === 'touch' && activeTouchPointers.has(e.pointerId)) {
+      activeTouchPointers.set(e.pointerId, { x: screen.x, y: screen.y, clientX: e.clientX, clientY: e.clientY });
+      if (longPressState && longPressState.pointerId === e.pointerId) {
+        const moved = Math.hypot(screen.x - longPressState.startScreen.x, screen.y - longPressState.startScreen.y);
+        if (moved > TOUCH_MOVE_CANCEL_PX) cancelLongPress(e.pointerId);
+      }
+      if (pinchGesture) {
+        e.preventDefault();
+        updatePinchGesture();
+        return;
+      }
+    }
+
     const world = screenToWorld(screen.x, screen.y, true);
     updateCursorStatus(world);
     if (!interaction) updateHoverCursor(world);
@@ -989,11 +1084,13 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     const movedPx = Math.hypot(screen.x - interaction.startScreen.x, screen.y - interaction.startScreen.y);
 
     if (interaction.mode === 'object-pending' && movedPx >= 5) {
+      if (e.pointerType === 'touch') cancelLongPress(e.pointerId);
       interaction.mode = 'drag';
       interaction.moved = true;
       canvas.style.cursor = 'move';
     }
     if (interaction.mode === 'background-pending' && movedPx >= 5) {
+      if (e.pointerType === 'touch') cancelLongPress(e.pointerId);
       interaction.mode = 'pan';
       interaction.moved = true;
       canvas.style.cursor = '';
@@ -1001,7 +1098,10 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     }
 
     if (interaction.mode === 'handle-drag') {
-      if (movedPx >= 2) interaction.moved = true;
+      if (movedPx >= 2) {
+        interaction.moved = true;
+        if (e.pointerType === 'touch') cancelLongPress(e.pointerId);
+      }
       const obj = project.objects.find(o => o.id === interaction.objectId);
       if (!obj || !interaction.moved) return;
       const h = interaction.handle;
@@ -1103,7 +1203,49 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   }
 
   function onPointerUp(e) {
-    if (!interaction || interaction.pointerId !== e.pointerId) return;
+    if (e.pointerType === 'touch') {
+      cancelLongPress(e.pointerId);
+      activeTouchPointers.delete(e.pointerId);
+
+      if (pinchGesture) {
+        const endedPinchPointer = pinchGesture.ids.includes(e.pointerId);
+        if (endedPinchPointer || activeTouchPointers.size < 2) {
+          pinchGesture = null;
+          interaction = null;
+          canvas.classList.remove('pinching');
+          canvas.classList.remove('panning');
+          canvas.style.cursor = '';
+          try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* ignored */ }
+          requestRender();
+          return;
+        }
+      }
+
+      if (suppressTouchPointerId === e.pointerId) {
+        suppressTouchPointerId = null;
+        interaction = null;
+        canvas.classList.remove('panning');
+        canvas.style.cursor = '';
+        try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* ignored */ }
+        requestRender();
+        return;
+      }
+    }
+
+    if (e.type === 'pointercancel') {
+      interaction = null;
+      canvas.classList.remove('panning');
+      canvas.classList.remove('pinching');
+      canvas.style.cursor = '';
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* ignored */ }
+      requestRender();
+      return;
+    }
+
+    if (!interaction || interaction.pointerId !== e.pointerId) {
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* ignored */ }
+      return;
+    }
     e.preventDefault();
     const screen = pointerScreen(e);
     const world = screenToWorld(screen.x, screen.y, true);
@@ -1852,7 +1994,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     return `<!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${escapeHtml(data.name)}｜作戦図</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0c0e11;color:#eef1f6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",Meiryo,sans-serif}body{display:grid;grid-template-rows:54px 1fr 30px}header{display:flex;align-items:center;gap:12px;padding:7px 12px;background:#171a20;border-bottom:1px solid #323844}h1{margin:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}header .spacer{flex:1}button,select{height:34px;border:1px solid #414957;border-radius:6px;background:#262b35;color:#eef1f6;padding:0 9px;font:inherit;font-size:12px}button{cursor:pointer}.stage{position:relative;min-height:0}canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}footer{display:flex;align-items:center;gap:12px;padding:0 10px;background:#15181d;border-top:1px solid #323844;color:#aab2c0;font-size:10px}footer .spacer{flex:1}@media(max-width:620px){header{gap:5px;padding:6px}h1{font-size:13px}header select{max-width:120px}header button{padding:0 7px}}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0c0e11;color:#eef1f6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",Meiryo,sans-serif}body{display:grid;grid-template-rows:54px 1fr 30px}header{display:flex;align-items:center;gap:12px;padding:7px 12px;background:#171a20;border-bottom:1px solid #323844}h1{margin:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}header .spacer{flex:1}button,select{height:34px;border:1px solid #414957;border-radius:6px;background:#262b35;color:#eef1f6;padding:0 9px;font:inherit;font-size:12px}button{cursor:pointer}.stage{position:relative;min-height:0}canvas{display:block;width:100%;height:100%;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;cursor:grab}footer{display:flex;align-items:center;gap:12px;padding:0 10px;background:#15181d;border-top:1px solid #323844;color:#aab2c0;font-size:10px}footer .spacer{flex:1}@media(max-width:620px){header{gap:5px;padding:6px}h1{font-size:13px}header select{max-width:120px}header button{padding:0 7px}}
 </style></head><body>
 <header><h1>${escapeHtml(data.name)}</h1><span class="spacer"></span><select id="phase"><option>すべて</option><option>共通</option><option>第1段階</option><option>第2段階</option><option>第3段階</option><option>予備</option></select><button id="fit">全体表示</button><button id="zin">＋</button><button id="zout">−</button></header>
 <div class="stage" id="stage"><canvas id="c"></canvas></div>
@@ -1891,9 +2033,11 @@ function zoom(f,a,b){let wx=(a-view.x)/view.s,wy=(b-view.y)/view.s;view.s=Math.m
 function pointer(e){let r=c.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
 img.onload=()=>{resize();fit();draw()};img.src=project.background.dataUrl||project.background.src;
 new ResizeObserver(()=>{resize();draw()}).observe(stage);
-c.onpointerdown=e=>{e.preventDefault();let p=pointer(e);drag={id:e.pointerId,p:p,v:{s:view.s,x:view.x,y:view.y}};c.setPointerCapture(e.pointerId);c.style.cursor='grabbing'};
-c.onpointermove=e=>{let p=pointer(e),wx=(p.x-view.x)/view.s,wy=(p.y-view.y)/view.s,g=wg(wx,wy);if(g)$('game').textContent='ゲーム座標: '+g.x.toFixed(1)+', '+g.y.toFixed(1);if(drag&&drag.id===e.pointerId){view.x=drag.v.x+p.x-drag.p.x;view.y=drag.v.y+p.y-drag.p.y;draw()}};
-c.onpointerup=()=>{drag=null;c.style.cursor='grab'};c.onpointercancel=c.onpointerup;c.onwheel=e=>{e.preventDefault();let p=pointer(e);zoom(Math.exp(-e.deltaY*.0015),p.x,p.y)};
+let touches=new Map(),pinch=null;
+function startPinch(){let a=[...touches.entries()].slice(0,2);if(a.length<2)return;let p=a[0][1],q=a[1][1],mx=(p.x+q.x)/2,my=(p.y+q.y)/2;pinch={ids:[a[0][0],a[1][0]],dist:Math.max(1,Math.hypot(q.x-p.x,q.y-p.y)),scale:view.s,wx:(mx-view.x)/view.s,wy:(my-view.y)/view.s};drag=null}
+c.onpointerdown=e=>{e.preventDefault();let p=pointer(e);c.setPointerCapture(e.pointerId);if(e.pointerType==='touch'){touches.set(e.pointerId,p);if(touches.size>=2){startPinch();return}}drag={id:e.pointerId,p:p,v:{s:view.s,x:view.x,y:view.y}};c.style.cursor='grabbing'};
+c.onpointermove=e=>{let p=pointer(e);if(e.pointerType==='touch'&&touches.has(e.pointerId)){touches.set(e.pointerId,p);if(pinch){let a=touches.get(pinch.ids[0]),b=touches.get(pinch.ids[1]);if(a&&b){e.preventDefault();let mx=(a.x+b.x)/2,my=(a.y+b.y)/2,d=Math.max(1,Math.hypot(b.x-a.x,b.y-a.y));view.s=Math.max(.03,Math.min(12,pinch.scale*d/pinch.dist));view.x=mx-pinch.wx*view.s;view.y=my-pinch.wy*view.s;draw();return}}}let wx=(p.x-view.x)/view.s,wy=(p.y-view.y)/view.s,g=wg(wx,wy);if(g)$('game').textContent='ゲーム座標: '+g.x.toFixed(1)+', '+g.y.toFixed(1);if(drag&&drag.id===e.pointerId){view.x=drag.v.x+p.x-drag.p.x;view.y=drag.v.y+p.y-drag.p.y;draw()}};
+c.onpointerup=e=>{if(e.pointerType==='touch'){touches.delete(e.pointerId);if(pinch&&(pinch.ids.includes(e.pointerId)||touches.size<2)){pinch=null;drag=null;c.style.cursor='grab';return}}if(drag&&drag.id===e.pointerId)drag=null;c.style.cursor='grab'};c.onpointercancel=c.onpointerup;c.onwheel=e=>{e.preventDefault();let p=pointer(e);zoom(Math.exp(-e.deltaY*.0015),p.x,p.y)};
 $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeight/2);$('zout').onclick=()=>zoom(.8,c.clientWidth/2,c.clientHeight/2);$('phase').value=phase;$('phase').onchange=e=>{phase=e.target.value;draw()};
 </script></body></html>`;
   }
@@ -2222,22 +2366,42 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     return best;
   }
 
-  function onMapContextMenu(e) {
-    e.preventDefault();
-    const s = pointerScreen(e); const place = hitPk1PlaceAtScreen(s.x, s.y);
-    if (!place) { hidePlaceContextMenu(); return; }
+  function contextTargetAtScreen(sx, sy) {
+    const place = hitPk1PlaceAtScreen(sx, sy);
+    if (place) return place;
+    const world = screenToWorld(sx, sy, true);
+    const game = worldToGame(world.x, world.y);
+    if (!game) return null;
+    const gx = Math.round(game.x), gy = Math.round(game.y);
+    if (gx < 0 || gx >= PK1_WIDTH || gy < 0 || gy >= PK1_HEIGHT) return null;
+    return { id: null, name: '地点', kind: 'point', center_x: gx, center_y: gy };
+  }
+
+  function openPlaceContextMenuAt(clientX, clientY, screen = null) {
+    const rect = refs.stageWrap.getBoundingClientRect();
+    const s = screen || { x: clientX - rect.left, y: clientY - rect.top };
+    const place = contextTargetAtScreen(s.x, s.y);
+    if (!place) { hidePlaceContextMenu(); return false; }
     contextPlace = place;
-    refs.placeContextTitle.textContent = `${place.name}  (${Math.round(place.center_x)},${Math.round(place.center_y)})`;
+    const gx = Math.round(Number(place.center_x)), gy = Math.round(Number(place.center_y));
+    refs.placeContextTitle.textContent = place.kind === 'point' ? `地点  (${gx},${gy})` : `${place.name}  (${gx},${gy})`;
     const isGate = place.kind === 'gate';
     refs.placeContextGateBtn.hidden = !isGate;
     if (isGate) {
       const blocked = ensureRoutePlanner().blockedGates.includes(Number(place.id));
       refs.placeContextGateBtn.textContent = blocked ? '通行可能に戻す' : 'この関所を通行不可';
     }
-    const rect = refs.stageWrap.getBoundingClientRect();
-    refs.placeContextMenu.style.left = `${Math.min(rect.width - 210, Math.max(8, e.clientX - rect.left))}px`;
-    refs.placeContextMenu.style.top = `${Math.min(rect.height - 150, Math.max(8, e.clientY - rect.top))}px`;
     refs.placeContextMenu.hidden = false;
+    const menuWidth = refs.placeContextMenu.offsetWidth || 202;
+    const menuHeight = refs.placeContextMenu.offsetHeight || 150;
+    refs.placeContextMenu.style.left = `${Math.min(Math.max(8, rect.width - menuWidth - 8), Math.max(8, clientX - rect.left))}px`;
+    refs.placeContextMenu.style.top = `${Math.min(Math.max(8, rect.height - menuHeight - 8), Math.max(8, clientY - rect.top))}px`;
+    return true;
+  }
+
+  function onMapContextMenu(e) {
+    e.preventDefault();
+    openPlaceContextMenuAt(e.clientX, e.clientY, pointerScreen(e));
   }
 
   function hidePlaceContextMenu() { if (refs.placeContextMenu) refs.placeContextMenu.hidden = true; contextPlace = null; }
