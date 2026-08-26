@@ -27,7 +27,6 @@
       <nav class="header-actions" aria-label="ファイル操作">
         <button id="newProjectBtn" class="button ghost" type="button">新規</button>
         <button id="builtinMapBtn" class="button" type="button">PK1マップ</button>
-        <button id="loadMapBtn" class="button ghost" type="button">背景画像</button>
         <button id="saveProjectBtn" class="button" type="button">作戦保存</button>
         <button id="loadProjectBtn" class="button" type="button">作戦読込</button>
         <div class="menu-wrap">
@@ -62,13 +61,13 @@
           <button class="tool-button" data-tool="garrison" type="button"><span class="tool-icon">♜</span><span>駐屯</span></button>
           <button class="tool-button" data-tool="camp" type="button"><span class="tool-icon">▲</span><span>幕舎</span></button>
           <button class="tool-button" data-tool="fort" type="button"><span class="tool-icon">▥</span><span>陣城</span></button>
+          <button class="tool-button" data-tool="relocate" type="button"><span class="tool-icon">遷</span><span>遷城</span></button>
         </div>
 
         <div class="tool-section">
           <div class="section-title">作戦</div>
           <button class="tool-button" data-tool="arrow" type="button"><span class="tool-icon">➜</span><span>侵攻</span></button>
           <button class="tool-button" data-tool="defense" type="button"><span class="tool-icon">┻</span><span>防衛線</span></button>
-          <button class="tool-button" data-tool="area" type="button"><span class="tool-icon area-icon"></span><span>範囲</span></button>
           <button class="tool-button" data-tool="target" type="button"><span class="tool-icon">◎</span><span>目標</span></button>
           <button class="tool-button" data-tool="text" type="button"><span class="tool-icon">T</span><span>メモ</span></button>
         </div>
@@ -93,9 +92,8 @@
           <div class="empty-card">
             <div class="empty-icon">地図</div>
             <h2>PK1標準マップを読み込めませんでした</h2>
-            <p>通常はAPK/EBDLから復元したPK1マップが自動表示されます。必要なら任意の背景画像にも切り替えられます。</p>
+            <p>PK1標準マップの読み込みに失敗しました。再読込をお試しください。</p>
             <button id="emptyBuiltinMapBtn" class="button accent" type="button">PK1標準マップを再読込</button>
-            <button id="emptyLoadMapBtn" class="button ghost" type="button">背景画像を選択</button>
           </div>
         </div>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -163,6 +161,38 @@
           </div>
         </form>
 
+
+
+        <section class="panel-section phase-filter-section">
+          <div class="section-heading">
+            <h3>表示する段階</h3>
+          </div>
+          <select id="phaseFilter">
+            <option value="すべて">すべて</option>
+            <option value="共通">共通のみ</option>
+            <option value="第1段階">共通＋第1段階</option>
+            <option value="第2段階">共通＋第2段階</option>
+            <option value="第3段階">共通＋第3段階</option>
+            <option value="予備">共通＋予備</option>
+          </select>
+        </section>
+
+        <section class="panel-section coordinate-section">
+          <div class="section-heading">
+            <h3>ゲーム座標</h3>
+            <button id="calibrationBtn" class="text-button" type="button">設定</button>
+          </div>
+          <p id="calibrationSummary" class="muted">未設定</p>
+        </section>
+
+        <section class="panel-section layer-section">
+          <div class="section-heading">
+            <h3>配置済み記号</h3>
+            <span id="objectCount" class="count-badge">0</span>
+          </div>
+          <div id="layerList" class="layer-list"></div>
+        </section>
+
         <section class="panel-section route-section">
           <div class="section-heading">
             <h3>経路探索</h3>
@@ -209,42 +239,15 @@
 
           <div id="routeResult" class="route-result">経路点を2点以上指定してください。</div>
         </section>
-
-        <section class="panel-section phase-filter-section">
-          <div class="section-heading">
-            <h3>表示する段階</h3>
-          </div>
-          <select id="phaseFilter">
-            <option value="すべて">すべて</option>
-            <option value="共通">共通のみ</option>
-            <option value="第1段階">共通＋第1段階</option>
-            <option value="第2段階">共通＋第2段階</option>
-            <option value="第3段階">共通＋第3段階</option>
-            <option value="予備">共通＋予備</option>
-          </select>
-        </section>
-
-        <section class="panel-section coordinate-section">
-          <div class="section-heading">
-            <h3>ゲーム座標</h3>
-            <button id="calibrationBtn" class="text-button" type="button">設定</button>
-          </div>
-          <p id="calibrationSummary" class="muted">未設定</p>
-        </section>
-
-        <section class="panel-section layer-section">
-          <div class="section-heading">
-            <h3>配置済み記号</h3>
-            <span id="objectCount" class="count-badge">0</span>
-          </div>
-          <div id="layerList" class="layer-list"></div>
-        </section>
       </aside>
     </main>
 
     <footer class="status-bar">
-      <span id="cursorPosition">画像座標: --, --</span>
-      <span id="gamePosition">ゲーム座標: 未設定</span>
+      <div class="game-coordinate-status" title="現在のゲーム座標">
+        <span class="game-coordinate-label">ゲーム座標</span>
+        <strong id="gamePosition">未設定</strong>
+        <button id="copyGamePositionBtn" class="coordinate-copy-button" type="button" disabled>コピー</button>
+      </div>
       <span class="status-spacer"></span>
       <button id="fitBtn" class="status-button" type="button">全体表示</button>
       <button id="zoomOutBtn" class="status-button" type="button" aria-label="縮小">−</button>
@@ -253,7 +256,6 @@
     </footer>
   </div>
 
-  <input id="mapFileInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
   <input id="projectFileInput" type="file" accept=".nssmap,.json,application/json" hidden>
 
   <dialog id="helpDialog" class="modal">
@@ -265,7 +267,7 @@
       <div class="modal-body help-content">
         <section>
           <h3>1. PK1標準マップ</h3>
-          <p>APK/EBDLから復元した2000×3250のPK1論理マップを内蔵しています。起動時に自動で読み込み、ゲーム座標も設定済みです。任意の背景画像へ切り替えることもできます。</p>
+          <p>APK/EBDLから復元したPK1マップを内蔵しています。起動時に自動で読み込み、ゲーム座標も設定済みです。</p>
         </section>
         <section>
           <h3>2. 経路探索</h3>
@@ -306,7 +308,7 @@
         <button class="icon-button" value="cancel" aria-label="閉じる">×</button>
       </div>
       <div class="modal-body">
-        <p class="modal-note">任意の背景画像を使う場合だけ、画像上の左上と右下に対応するゲーム内座標を入力します。PK1標準マップは設定済みです。</p>
+        <p class="modal-note">PK1標準マップはゲーム座標が設定済みです。</p>
         <div class="coordinate-grid">
           <fieldset>
             <legend>画像の左上</legend>

@@ -16,7 +16,7 @@
   --danger: #d94d4d;
   --shadow: 0 16px 40px rgba(0,0,0,.35);
   --header-h: 68px;
-  --status-h: 32px;
+  --status-h: 46px;
   --tool-w: 94px;
   --inspector-w: 320px;
 }
@@ -231,6 +231,12 @@ button { color: inherit; }
   display: flex; align-items: center; gap: 13px; padding: 0 10px;
   border-top: 1px solid var(--line); background: #15181d; color: #aab2c0; font-size: 10px;
 }
+.game-coordinate-status { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.game-coordinate-label { color: #8f99a8; font-size: 10px; }
+#gamePosition { color: #fff; font-size: 17px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
+.coordinate-copy-button { height: 28px; padding: 0 10px; border: 1px solid #3b4553; border-radius: 6px; background: #252b34; color: #e7ebf1; cursor: pointer; font-size: 11px; }
+.coordinate-copy-button:hover:not(:disabled) { background: #323a46; }
+.coordinate-copy-button:disabled { opacity: .38; cursor: default; }
 .status-spacer { flex: 1; }
 .status-button { padding: 2px 5px; background: transparent; color: #b9c1cd; font-size: 10px; }
 .status-button:hover { color: #fff; }
@@ -302,7 +308,6 @@ button { color: inherit; }
   }
   .inspector.open { transform: translateX(0); }
   .status-bar { gap: 8px; }
-  #cursorPosition { display: none; }
 }
 
 @media (max-width: 560px) {
@@ -313,7 +318,9 @@ button { color: inherit; }
   .empty-card h2 { font-size: 16px; }
   .coordinate-grid { grid-template-columns: 1fr; }
   .status-bar { font-size: 9px; }
-  #gamePosition { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #gamePosition { font-size: 15px; }
+  .game-coordinate-label { display: none; }
+  .coordinate-copy-button { height: 26px; padding: 0 8px; }
 }
 
 /* PK1 route planner */

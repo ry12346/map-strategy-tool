@@ -58,6 +58,7 @@
   let placeLookup = new Map();
   let routeWorker = null;
   let routeBusy = false;
+  let lastGamePosition = null;
 
   document.addEventListener('DOMContentLoaded', init);
 
@@ -106,7 +107,7 @@
       'inspector', 'noSelection', 'propertyForm', 'propLabel', 'propDescription', 'propColor',
       'propOpacity', 'propSize', 'propLineWidth', 'propPhase', 'duplicateBtn', 'bringFrontBtn',
       'deleteObjectBtn', 'phaseFilter', 'calibrationBtn', 'calibrationSummary', 'layerList',
-      'objectCount', 'cursorPosition', 'gamePosition', 'fitBtn', 'zoomOutBtn', 'zoomDisplay',
+      'objectCount', 'gamePosition', 'copyGamePositionBtn', 'fitBtn', 'zoomOutBtn', 'zoomDisplay',
       'zoomInBtn', 'mapFileInput', 'projectFileInput', 'helpDialog', 'calibrationDialog',
       'calibrationForm', 'calTopLeftX', 'calTopLeftY', 'calBottomRightX', 'calBottomRightY',
       'clearCalibrationBtn', 'saveCalibrationBtn', 'builtinMapBtn', 'emptyBuiltinMapBtn',
@@ -188,6 +189,7 @@
     refs.fitBtn.addEventListener('click', fitView);
     refs.zoomInBtn.addEventListener('click', () => zoomAt(1.25, canvas.clientWidth / 2, canvas.clientHeight / 2));
     refs.zoomOutBtn.addEventListener('click', () => zoomAt(0.8, canvas.clientWidth / 2, canvas.clientHeight / 2));
+    refs.copyGamePositionBtn.addEventListener('click', copyCurrentGamePosition);
 
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
@@ -1456,11 +1458,38 @@
 
   function updateCursorStatus(world) {
     if (!world) return;
-    refs.cursorPosition.textContent = `画像座標: ${Math.round(world.x)}, ${Math.round(world.y)}`;
     const game = worldToGame(world.x, world.y);
-    refs.gamePosition.textContent = game
-      ? `ゲーム座標: ${formatCoord(game.x)}, ${formatCoord(game.y)}`
-      : 'ゲーム座標: 未設定';
+    lastGamePosition = game;
+    if (game) {
+      refs.gamePosition.textContent = `${formatCoord(game.x)}, ${formatCoord(game.y)}`;
+      refs.copyGamePositionBtn.disabled = false;
+    } else {
+      refs.gamePosition.textContent = '未設定';
+      refs.copyGamePositionBtn.disabled = true;
+    }
+  }
+
+  async function copyCurrentGamePosition() {
+    if (!lastGamePosition) return;
+    const text = `${formatCoord(lastGamePosition.x)},${formatCoord(lastGamePosition.y)}`;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      showToast(`座標 ${text} をコピーしました`);
+    } catch (error) {
+      console.error(error);
+      showToast('座標をコピーできませんでした', true);
+    }
   }
 
   function worldToGame(x, y) {
@@ -1538,7 +1567,7 @@
     dirty = true;
     refs.calibrationDialog.close();
     updateCalibrationSummary();
-    refs.gamePosition.textContent = 'ゲーム座標: 未設定';
+    lastGamePosition = null; refs.gamePosition.textContent = '未設定'; refs.copyGamePositionBtn.disabled = true;
     showToast('ゲーム座標設定を解除しました');
   }
 
@@ -1860,8 +1889,6 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     const crossed = (r.crossedGates || []).map(id => pk1Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
     const blocked = rp.blockedGates.map(id => pk1Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
     refs.routeResult.innerHTML = `<div class="route-ok">最短 ${r.totalSteps} マス</div><table>` +
-      `<tr><td>障害物なし</td><td>${r.directSteps} マス</td></tr>` +
-      `<tr><td>迂回増分</td><td>+${r.totalSteps-r.directSteps}</td></tr>` +
       `<tr><td>通過関所</td><td>${crossed.length ? crossed.join('、') : '-'}</td></tr>` +
       `<tr><td>遮断関所</td><td>${blocked.length ? blocked.join('、') : '-'}</td></tr></table>`;
   }
@@ -1906,23 +1933,32 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     const rp=ensureRoutePlanner();rp.blockedGates=getBlockedGateIds();rp.path=[];rp.result=null;dirty=true;renderRouteResult();requestRender();
   }
   function filterGateBlocks() {
-    const q=refs.gateFilter.value.trim().toLowerCase();
-    for (const item of refs.gateBlockList.querySelectorAll('.gate-block-item')) item.hidden = q && !item.dataset.label.toLowerCase().includes(q);
+    const q = refs.gateFilter.value.trim().toLowerCase();
+    for (const item of refs.gateBlockList.querySelectorAll('.gate-block-item')) {
+      const match = !q || item.dataset.label.toLowerCase().includes(q);
+      item.style.display = match ? 'flex' : 'none';
+    }
   }
 
   function populatePlaceSearch() {
     placeLookup = new Map(); refs.placeSearchList.textContent = '';
-    const add=(prefix,obj)=>{ const label=`${prefix}${obj.id} ${obj.name}`; const op=document.createElement('option');op.value=label;refs.placeSearchList.appendChild(op);placeLookup.set(label,obj);placeLookup.set(obj.name,obj); };
-    pk1Cities.forEach(o=>add('城',o)); pk1Gates.forEach(o=>add('関',o));
+    const add = obj => {
+      const label = String(obj.name);
+      const op = document.createElement('option');
+      op.value = label;
+      refs.placeSearchList.appendChild(op);
+      placeLookup.set(label, obj);
+    };
+    pk1Cities.forEach(add); pk1Gates.forEach(add);
   }
 
   function populateGateBlockList() {
     refs.gateBlockList.textContent='';
     for (const g of pk1Gates) {
-      const label=document.createElement('label'); label.className='gate-block-item'; label.dataset.label=`${g.id} ${g.name} ${g.province_names||''}`;
+      const label=document.createElement('label'); label.className='gate-block-item'; label.dataset.label=`${g.name} ${g.province_names||''}`;
       const cb=document.createElement('input'); cb.type='checkbox'; cb.dataset.id=String(g.id); cb.checked=ensureRoutePlanner().blockedGates.includes(Number(g.id));
       cb.addEventListener('change',()=>{ const rp=ensureRoutePlanner();rp.blockedGates=getBlockedGateIds();rp.path=[];rp.result=null;dirty=true;renderRouteResult();requestRender(); });
-      const sp=document.createElement('span'); sp.textContent=`${g.id} ${g.name} (${Math.round(g.center_x)},${Math.round(g.center_y)})`;
+      const sp=document.createElement('span'); sp.textContent=`${g.name} (${Math.round(g.center_x)},${Math.round(g.center_y)})`;
       label.append(cb,sp); refs.gateBlockList.appendChild(label);
     }
   }
@@ -1931,7 +1967,7 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     const text = refs.placeSearch.value.trim();
     if (!text) return null;
     if (placeLookup.has(text)) return placeLookup.get(text);
-    const q = text.replace(/^(城|関)\d+\s*/, '').toLowerCase();
+    const q = text.toLowerCase();
     const all = [...pk1Cities, ...pk1Gates];
     const exact = all.find(o => String(o.name).toLowerCase() === q);
     if (exact) return exact;
