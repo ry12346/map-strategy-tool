@@ -234,9 +234,6 @@ button { color: inherit; }
 .game-coordinate-status { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .game-coordinate-label { color: #8f99a8; font-size: 10px; }
 #gamePosition { color: #fff; font-size: 17px; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
-.coordinate-copy-button { height: 28px; padding: 0 10px; border: 1px solid #3b4553; border-radius: 6px; background: #252b34; color: #e7ebf1; cursor: pointer; font-size: 11px; }
-.coordinate-copy-button:hover:not(:disabled) { background: #323a46; }
-.coordinate-copy-button:disabled { opacity: .38; cursor: default; }
 .status-spacer { flex: 1; }
 .status-button { padding: 2px 5px; background: transparent; color: #b9c1cd; font-size: 10px; }
 .status-button:hover { color: #fff; }
@@ -320,7 +317,6 @@ button { color: inherit; }
   .status-bar { font-size: 9px; }
   #gamePosition { font-size: 15px; }
   .game-coordinate-label { display: none; }
-  .coordinate-copy-button { height: 26px; padding: 0 8px; }
 }
 
 /* PK1 route planner */
@@ -381,14 +377,21 @@ button { color: inherit; }
 .timeline-current { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:#e8ecf2; font-size:11px; text-align:center; }
 .timeline-list { display:flex; flex-direction:column; gap:6px; }
 .timeline-empty { color:var(--muted); font-size:10px; line-height:1.5; padding:5px 0; }
-.timeline-item { display:grid; grid-template-columns:64px minmax(70px,1fr); grid-template-areas:"time title" "phase actions"; gap:5px; padding:7px; border:1px solid #303744; border-radius:7px; background:#1a1e25; }
+.timeline-item { display:grid; grid-template-columns:104px minmax(0,1fr) 50px 30px; grid-template-areas:"time title title title" "phase phase go del"; gap:6px; padding:8px; border:1px solid #303744; border-radius:7px; background:#1a1e25; }
 .timeline-item.active { border-color:#c45345; box-shadow:0 0 0 1px rgba(196,83,69,.2); }
-.timeline-item input,.timeline-item select { min-width:0; height:28px; border:1px solid #3b4350; border-radius:5px; background:#12161c; color:#e7ebf1; font:10px inherit; padding:0 6px; }
-.timeline-time { grid-area:time; }.timeline-title { grid-area:title; }.timeline-phase { grid-area:phase; }
-.timeline-go,.timeline-delete { height:27px; border:1px solid #414957; border-radius:5px; background:#252b34; color:#e7ebf1; font-size:10px; cursor:pointer; }
-.timeline-go { width:46px; }.timeline-delete { width:28px; color:#f0a29a; }
-.timeline-item > .timeline-go { grid-area:actions; justify-self:start; }
-.timeline-item > .timeline-delete { grid-area:actions; justify-self:end; }
+.timeline-item input,.timeline-item select { width:100%; min-width:0; height:30px; border:1px solid #3b4350; border-radius:5px; background:#12161c; color:#e7ebf1; font:10px inherit; padding:0 7px; }
+.timeline-time { grid-area:time; min-width:104px !important; color-scheme:dark; }
+.timeline-title { grid-area:title; }
+.timeline-phase { grid-area:phase; min-width:0; }
+.timeline-go,.timeline-delete { height:30px; border:1px solid #414957; border-radius:5px; background:#252b34; color:#e7ebf1; font-size:10px; cursor:pointer; padding:0; }
+.timeline-go { grid-area:go; width:50px; justify-self:stretch; }
+.timeline-delete { grid-area:del; width:30px; color:#f0a29a; justify-self:stretch; }
+
+@media (max-width: 340px) {
+  .timeline-item { grid-template-columns:100px minmax(0,1fr) 48px 30px; }
+  .timeline-time { min-width:100px !important; }
+}
+
 .route-alternatives { display:flex; flex-wrap:wrap; gap:8px 12px; margin:8px 0 2px; }
 .route-alternatives .route-check { margin:0; }
 .route-alt-summary { margin-top:4px; font-weight:700; font-size:11px; }
