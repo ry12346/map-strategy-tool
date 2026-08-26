@@ -14,20 +14,20 @@
   const PK1_DISPLAY_TRANSFORM = { m00:1.3811020352, m01:-1.1998330080000001, m10:0.7361070080000001, m11:0.568297248, tx:2225.7348256, ty:-536.8040288000001, im00:0.34068904150606916, im01:0.7192889969139248, im10:-0.44128946934724644, im11:0.8279581332661488 };
 
   const TYPE_META = {
-    ally:     { name: '自軍',   label: '自軍部隊', color: '#2f80d0', size: 52, lineWidth: 5, symbol: '自' },
-    enemy:    { name: '敵軍',   label: '敵軍部隊', color: '#d24f4f', size: 52, lineWidth: 5, symbol: '敵' },
-    garrison: { name: '駐屯',   label: '駐屯地点', color: '#2f80d0', size: 56, lineWidth: 5, symbol: '駐' },
-    camp:     { name: '幕舎',   label: '幕舎建設', color: '#3aa86d', size: 58, lineWidth: 5, symbol: '幕' },
-    fort:     { name: '陣城',   label: '陣城建設', color: '#9267cf', size: 58, lineWidth: 5, symbol: '陣' },
+    ally:     { name: '自軍',   label: '自軍部隊', color: '#2f80d0', size: 28, lineWidth: 3, symbol: '自' },
+    enemy:    { name: '敵軍',   label: '敵軍部隊', color: '#d24f4f', size: 28, lineWidth: 3, symbol: '敵' },
+    garrison: { name: '駐屯',   label: '駐屯地点', color: '#2f80d0', size: 30, lineWidth: 3, symbol: '駐' },
+    camp:     { name: '幕舎',   label: '幕舎建設', color: '#3aa86d', size: 30, lineWidth: 3, symbol: '幕' },
+    fort:     { name: '陣城',   label: '陣城建設', color: '#9267cf', size: 30, lineWidth: 3, symbol: '陣' },
     castle:   { name: '城',     label: '攻略対象の城', color: '#8b6948', size: 58, lineWidth: 5, symbol: '城' },
     gate:     { name: '関所',   label: '攻略対象の関所', color: '#a15f3e', size: 58, lineWidth: 5, symbol: '関' },
     bridge:   { name: '橋',     label: '攻略対象の橋', color: '#36818b', size: 58, lineWidth: 5, symbol: '橋' },
     station:  { name: '駅路',   label: '攻略対象の駅路', color: '#b17b2f', size: 58, lineWidth: 5, symbol: '駅' },
-    arrow:    { name: '侵攻',   label: '侵攻ルート', color: '#2f80d0', size: 44, lineWidth: 9, symbol: '➜' },
-    defense:  { name: '防衛線', label: '防衛線', color: '#e0b43c', size: 42, lineWidth: 7, symbol: '防' },
-    area:     { name: '範囲',   label: '作戦範囲', color: '#d9a52a', size: 38, lineWidth: 4, symbol: '範' },
-    target:   { name: '目標',   label: '攻略目標', color: '#e3563a', size: 60, lineWidth: 5, symbol: '目' },
-    text:     { name: 'メモ',   label: '作戦メモ', color: '#f2f4f8', size: 34, lineWidth: 3, symbol: 'T' }
+    arrow:    { name: '侵攻',   label: '侵攻ルート', color: '#2f80d0', size: 24, lineWidth: 5, symbol: '➜' },
+    defense:  { name: '防衛線', label: '防衛線', color: '#e0b43c', size: 24, lineWidth: 4, symbol: '防' },
+    area:     { name: '範囲',   label: '作戦範囲', color: '#d9a52a', size: 24, lineWidth: 3, symbol: '範' },
+    target:   { name: '目標',   label: '攻略目標', color: '#e3563a', size: 32, lineWidth: 3, symbol: '目' },
+    text:     { name: 'メモ',   label: '作戦メモ', color: '#f2f4f8', size: 20, lineWidth: 2, symbol: 'T' }
   };
 
   const refs = {};
@@ -56,7 +56,6 @@
   let pk1Regions = [];
   let pk1Land = [];
   let placeLookup = new Map();
-  let labelOverlayImage = null;
   let routeWorker = null;
   let routeBusy = false;
 
@@ -114,7 +113,7 @@
       'routeBadge', 'routePoints', 'routeCalculateBtn', 'routeUndoPointBtn', 'routeClearBtn',
       'placeSearch', 'placeSearchList', 'placeCenterBtn', 'placeAddBtn',
       'gateBlockClearBtn', 'gateBlockAllBtn', 'gateFilter', 'gateBlockList',
-      'showGateMarkers', 'showCityMarkers', 'showPlaceLabels', 'routeResult'
+      'showGateMarkers', 'showCityMarkers', 'showGateLabels', 'showCityLabels', 'routeResult'
     ];
     for (const id of ids) refs[id] = document.getElementById(id);
     refs.toolButtons = Array.from(document.querySelectorAll('.tool-button[data-tool]'));
@@ -183,7 +182,8 @@
     refs.gateFilter.addEventListener('input', filterGateBlocks);
     refs.showGateMarkers.addEventListener('change', routeDisplayChanged);
     refs.showCityMarkers.addEventListener('change', routeDisplayChanged);
-    refs.showPlaceLabels.addEventListener('change', routeDisplayChanged);
+    refs.showGateLabels.addEventListener('change', routeDisplayChanged);
+    refs.showCityLabels.addEventListener('change', routeDisplayChanged);
 
     refs.fitBtn.addEventListener('click', fitView);
     refs.zoomInBtn.addEventListener('click', () => zoomAt(1.25, canvas.clientWidth / 2, canvas.clientHeight / 2));
@@ -684,21 +684,79 @@
     context.restore();
   }
 
+  function selectionHandles(obj) {
+    const handles = [];
+    if (!obj) return handles;
+    if (obj.type === 'arrow' || obj.type === 'defense') {
+      handles.push({ kind: 'endpoint-start', x: obj.x, y: obj.y });
+      handles.push({ kind: 'endpoint-end', x: obj.x2, y: obj.y2 });
+      if (obj.type === 'defense') {
+        const dx = obj.x2 - obj.x, dy = obj.y2 - obj.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const mx = (obj.x + obj.x2) / 2, my = (obj.y + obj.y2) / 2;
+        const dist = 34 / view.scale;
+        handles.push({ kind: 'rotate', x: mx - (dy / len) * dist, y: my + (dx / len) * dist, mx, my });
+      }
+      return handles;
+    }
+    const b = objectBounds(obj);
+    handles.push({ kind: 'corner-nw', x: b.x, y: b.y });
+    handles.push({ kind: 'corner-ne', x: b.x + b.w, y: b.y });
+    handles.push({ kind: 'corner-se', x: b.x + b.w, y: b.y + b.h });
+    handles.push({ kind: 'corner-sw', x: b.x, y: b.y + b.h });
+    return handles;
+  }
+
+  function hitSelectionHandle(x, y) {
+    const obj = getSelected();
+    if (!obj) return null;
+    const radius = 10 / view.scale;
+    for (const h of selectionHandles(obj)) {
+      if (Math.hypot(x - h.x, y - h.y) <= radius) return h;
+    }
+    return null;
+  }
+
   function drawSelection(context, obj) {
     const b = objectBounds(obj);
-    const pad = Math.max(8 / view.scale, 4);
+    const pad = Math.max(7 / view.scale, 3);
     context.save();
     context.globalAlpha = 1;
-    context.strokeStyle = '#fff';
-    context.lineWidth = 2 / view.scale;
-    context.setLineDash([7 / view.scale, 5 / view.scale]);
-    context.strokeRect(b.x - pad, b.y - pad, b.w + pad * 2, b.h + pad * 2);
+    context.strokeStyle = 'rgba(255,255,255,.92)';
+    context.lineWidth = 1.5 / view.scale;
+    context.setLineDash([6 / view.scale, 4 / view.scale]);
+    if (obj.type !== 'arrow' && obj.type !== 'defense') {
+      context.strokeRect(b.x - pad, b.y - pad, b.w + pad * 2, b.h + pad * 2);
+    }
     context.setLineDash([]);
-    if (obj.type === 'arrow' || obj.type === 'defense' || obj.type === 'area') {
-      context.fillStyle = '#fff';
-      const r = 5 / view.scale;
-      context.beginPath(); context.arc(obj.x, obj.y, r, 0, Math.PI * 2); context.fill();
-      context.beginPath(); context.arc(obj.x2, obj.y2, r, 0, Math.PI * 2); context.fill();
+
+    const handles = selectionHandles(obj);
+    if (obj.type === 'defense') {
+      const rot = handles.find(h => h.kind === 'rotate');
+      if (rot) {
+        context.strokeStyle = 'rgba(120,220,255,.9)';
+        context.lineWidth = 1.2 / view.scale;
+        context.beginPath(); context.moveTo(rot.mx, rot.my); context.lineTo(rot.x, rot.y); context.stroke();
+      }
+    }
+    const hs = 7 / view.scale;
+    for (const h of handles) {
+      context.beginPath();
+      if (h.kind === 'rotate') {
+        context.arc(h.x, h.y, hs * .72, 0, Math.PI * 2);
+        context.fillStyle = '#45c8f0';
+        context.fill();
+        context.strokeStyle = '#08212b';
+        context.lineWidth = 1.3 / view.scale;
+        context.stroke();
+      } else {
+        context.rect(h.x - hs / 2, h.y - hs / 2, hs, hs);
+        context.fillStyle = '#fff';
+        context.fill();
+        context.strokeStyle = '#22313d';
+        context.lineWidth = 1.2 / view.scale;
+        context.stroke();
+      }
     }
     context.restore();
   }
@@ -757,7 +815,19 @@
     const screen = pointerScreen(e);
     const world = screenToWorld(screen.x, screen.y, true);
     const forcePan = activeTool === 'pan' || spacePressed || e.button === 1 || e.button === 2;
+    const handle = !forcePan ? hitSelectionHandle(world.x, world.y) : null;
     const hit = !forcePan ? hitTest(world.x, world.y) : null;
+
+    if (handle && selectedId) {
+      const obj = getSelected();
+      interaction = {
+        mode: 'handle-drag', pointerId: e.pointerId, handle: handle.kind,
+        startScreen: screen, startWorld: world, snapshot: serializeProject(), objectId: obj.id,
+        moved: false,
+        original: { x: obj.x, y: obj.y, x2: obj.x2, y2: obj.y2, size: obj.size, bounds: objectBounds(obj) }
+      };
+      return;
+    }
 
     if (hit) {
       selectObject(hit.id);
@@ -804,6 +874,43 @@
       interaction.mode = 'pan';
       interaction.moved = true;
       canvas.classList.add('panning');
+    }
+
+    if (interaction.mode === 'handle-drag') {
+      if (movedPx >= 2) interaction.moved = true;
+      const obj = project.objects.find(o => o.id === interaction.objectId);
+      if (!obj || !interaction.moved) return;
+      const h = interaction.handle;
+      const o = interaction.original;
+      if (h === 'endpoint-start') {
+        obj.x = world.x; obj.y = world.y;
+      } else if (h === 'endpoint-end') {
+        obj.x2 = world.x; obj.y2 = world.y;
+      } else if (h === 'rotate' && obj.type === 'defense') {
+        const cx = (o.x + o.x2) / 2, cy = (o.y + o.y2) / 2;
+        const half = Math.max(1, Math.hypot(o.x2 - o.x, o.y2 - o.y) / 2);
+        const pointerAngle = Math.atan2(world.y - cy, world.x - cx);
+        const lineAngle = pointerAngle - Math.PI / 2;
+        const vx = Math.cos(lineAngle) * half, vy = Math.sin(lineAngle) * half;
+        obj.x = cx - vx; obj.y = cy - vy; obj.x2 = cx + vx; obj.y2 = cy + vy;
+      } else if (obj.type === 'area') {
+        let left = Math.min(o.x, o.x2), right = Math.max(o.x, o.x2);
+        let top = Math.min(o.y, o.y2), bottom = Math.max(o.y, o.y2);
+        if (h.includes('w')) left = world.x;
+        if (h.includes('e')) right = world.x;
+        if (h.includes('n')) top = world.y;
+        if (h.includes('s')) bottom = world.y;
+        if (left > right) [left, right] = [right, left];
+        if (top > bottom) [top, bottom] = [bottom, top];
+        obj.x = left; obj.y = top; obj.x2 = right; obj.y2 = bottom;
+      } else {
+        const radius = Math.max(5, Math.max(Math.abs(world.x - o.x), Math.abs(world.y - o.y)));
+        obj.size = Math.max(10, Math.min(500, radius / 0.72));
+      }
+      dirty = true;
+      syncSelectionUI();
+      requestRender();
+      return;
     }
 
     if (interaction.mode === 'pan') {
@@ -876,7 +983,7 @@
     const screen = pointerScreen(e);
     const world = screenToWorld(screen.x, screen.y, true);
 
-    if (interaction.mode === 'drag' && interaction.moved) {
+    if ((interaction.mode === 'drag' || interaction.mode === 'handle-drag') && interaction.moved) {
       recordHistory(interaction.snapshot);
       syncObjectUI();
     } else if (interaction.mode === 'background-pending' && !interaction.moved) {
@@ -1606,7 +1713,7 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
   }
 
   function defaultRoutePlanner() {
-    return { points: [], mode: 'land', blockedGates: [], showGates: true, showCities: false, showLabels: true, path: [], result: null };
+    return { points: [], mode: 'land', blockedGates: [], showGates: true, showCities: false, showGateLabels: true, showCityLabels: true, path: [], result: null };
   }
 
   function normalizeRoutePlanner(value) {
@@ -1621,7 +1728,8 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
       blockedGates: blocked,
       showGates: value.showGates !== false,
       showCities: value.showCities === true,
-      showLabels: value.showLabels !== false,
+      showGateLabels: value.showGateLabels !== false && value.showLabels !== false,
+      showCityLabels: value.showCityLabels !== false && value.showLabels !== false,
       path,
       result: value.result && typeof value.result === 'object' ? value.result : null
     };
@@ -1649,7 +1757,6 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
       ]);
       pk1Cities=cities; pk1Gates=gates; pk1Regions=regions; pk1Land=land;
     }
-    labelOverlayImage = await imageFromSource('data/pk1_labels.png').catch(() => null);
     populatePlaceSearch(); populateGateBlockList();
     if (!routeWorker) {
       const workerSource = "const W=2000,H=3250,N=W*H;let bitset=null;let gScore=new Uint32Array(N),seen=new Uint16Array(N),parentDir=new Uint8Array(N),generation=1;const dirs=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];function basePassable(i){return !!bitset&&((bitset[i>>3]>>(i&7))&1)!==0}function makeBlocked(gates,ids){const wanted=new Set(ids||[]),out=new Set();if(!wanted.size)return out;for(const g of gates){if(!wanted.has(Number(g.id)))continue;for(let y=Number(g.ymin);y<=Number(g.ymax);y++)for(let x=Number(g.xmin);x<=Number(g.xmax);x++)out.add(y*W+x)}return out}function heuristic(x,y,gx,gy){return Math.max(Math.abs(x-gx),Math.abs(y-gy))}class Heap{constructor(){this.i=[];this.f=[];this.g=[]}get length(){return this.i.length}push(idx,fv,gv){let p=this.i.length;this.i.push(idx);this.f.push(fv);this.g.push(gv);while(p){let q=(p-1)>>1;if(this.f[q]<=fv)break;this.i[p]=this.i[q];this.f[p]=this.f[q];this.g[p]=this.g[q];p=q}this.i[p]=idx;this.f[p]=fv;this.g[p]=gv}pop(){const n=this.i.length;if(!n)return null;const oi=this.i[0],of=this.f[0],og=this.g[0],li=this.i.pop(),lf=this.f.pop(),lg=this.g.pop();if(n>1){let p=0;while(true){let a=p*2+1;if(a>=n-1)break;let b=a+1,c=(b<n-1&&this.f[b]<this.f[a])?b:a;if(this.f[c]>=lf)break;this.i[p]=this.i[c];this.f[p]=this.f[c];this.g[p]=this.g[c];p=c}this.i[p]=li;this.f[p]=lf;this.g[p]=lg}return[oi,of,og]}}function bump(){generation++;if(generation>=65535){seen.fill(0);generation=1}}function route(start,goal,blocked,maxExpand=3000000){bump();const[sx,sy]=start,[gx,gy]=goal;if(sx<0||sx>=W||sy<0||sy>=H||gx<0||gx>=W||gy<0||gy>=H)return{status:'outside'};const sidx=sy*W+sx,gidx=gy*W+gx,can=i=>basePassable(i)&&!blocked.has(i);if(!can(sidx))return{status:'start_blocked'};if(!can(gidx))return{status:'goal_blocked'};const heap=new Heap();seen[sidx]=generation;gScore[sidx]=0;parentDir[sidx]=0;heap.push(sidx,heuristic(sx,sy,gx,gy),0);let expanded=0;while(heap.length){const item=heap.pop(),idx=item[0],pg=item[2];if(seen[idx]!==generation||gScore[idx]!==pg)continue;if(idx===gidx){const rev=[idx];let cur=idx;while(cur!==sidx){const code=parentDir[cur]-1;if(code<0)return{status:'parent_error'};const[dx,dy]=dirs[code],x=cur%W,y=Math.floor(cur/W);cur=(y-dy)*W+(x-dx);rev.push(cur)}rev.reverse();return{status:'ok',path:rev,steps:rev.length-1,expanded}}if(++expanded>maxExpand)return{status:'max_expand',expanded};const x=idx%W,y=Math.floor(idx/W),ng=pg+1;for(let di=0;di<8;di++){const dx=dirs[di][0],dy=dirs[di][1],nx=x+dx,ny=y+dy;if(nx<0||nx>=W||ny<0||ny>=H)continue;const ni=ny*W+nx;if(!can(ni))continue;if(seen[ni]!==generation||ng<gScore[ni]){seen[ni]=generation;gScore[ni]=ng;parentDir[ni]=di+1;heap.push(ni,ng+heuristic(nx,ny,gx,gy),ng)}}}return{status:'no_path',expanded}}self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.buffer);self.postMessage({type:'ready'});return}if(m.type!=='route')return;try{if(!bitset)throw new Error('route data not initialized');const blocked=makeBlocked(m.gates||[],m.blockedGateIds||[]),pts=m.points||[];let total=0,direct=0,expanded=0,full=[],segments=[];for(let k=0;k<pts.length-1;k++){direct+=Math.max(Math.abs(pts[k][0]-pts[k+1][0]),Math.abs(pts[k][1]-pts[k+1][1]));const r=route(pts[k],pts[k+1],blocked,m.maxExpand||3000000);expanded+=r.expanded||0;segments.push({start:pts[k],goal:pts[k+1],status:r.status,steps:r.steps??null,expanded:r.expanded||0});if(r.status!=='ok'){self.postMessage({type:'result',status:r.status,totalSteps:null,directSteps:direct,segments,expanded});return}total+=r.steps;full=full.concat(k?r.path.slice(1):r.path)}const arr=new Uint32Array(full);self.postMessage({type:'result',status:'ok',totalSteps:total,directSteps:direct,segments,expanded,path:arr},[arr.buffer])}catch(err){self.postMessage({type:'result',status:'error',message:String(err&&err.message||err)})}};";
@@ -1711,7 +1818,8 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     rp.mode = 'land';
     rp.showGates = refs.showGateMarkers.checked;
     rp.showCities = refs.showCityMarkers.checked;
-    rp.showLabels = refs.showPlaceLabels.checked;
+    rp.showGateLabels = refs.showGateLabels.checked;
+    rp.showCityLabels = refs.showCityLabels.checked;
     rp.path = []; rp.result = null; dirty = true; requestRender();
   }
 
@@ -1719,7 +1827,8 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     const rp = ensureRoutePlanner();
     rp.showGates = refs.showGateMarkers.checked;
     rp.showCities = refs.showCityMarkers.checked;
-    rp.showLabels = refs.showPlaceLabels.checked;
+    rp.showGateLabels = refs.showGateLabels.checked;
+    rp.showCityLabels = refs.showCityLabels.checked;
     dirty = true; requestRender();
   }
 
@@ -1730,7 +1839,8 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     if (document.activeElement !== refs.routePoints) refs.routePoints.value = text;
     refs.showGateMarkers.checked = rp.showGates;
     refs.showCityMarkers.checked = rp.showCities;
-    refs.showPlaceLabels.checked = rp.showLabels;
+    refs.showGateLabels.checked = rp.showGateLabels;
+    refs.showCityLabels.checked = rp.showCityLabels;
     if (pk1Gates.length) {
       for (const cb of refs.gateBlockList.querySelectorAll('input[type="checkbox"]')) cb.checked = rp.blockedGates.includes(Number(cb.dataset.id));
     }
@@ -1840,13 +1950,66 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
 
   function drawPk1ReferenceLayers(context) {
     if (!backgroundImage || !project.calibration) return;
-    const rp=ensureRoutePlanner();
-    if (rp.showLabels && labelOverlayImage && labelOverlayImage.complete) {
-      context.save();context.globalAlpha=.96;context.drawImage(labelOverlayImage,0,0);context.restore();
+    const rp = ensureRoutePlanner();
+    const drawMarker = (o, fill, stroke, rScreen) => {
+      const w = gameToWorld(Number(o.center_x), Number(o.center_y));
+      if (!w) return;
+      const r = Math.max(2.2, rScreen / view.scale);
+      context.beginPath(); context.arc(w.x, w.y, r, 0, Math.PI * 2);
+      context.fillStyle = fill; context.fill();
+      context.strokeStyle = stroke; context.lineWidth = Math.max(.7, 1 / view.scale); context.stroke();
+    };
+    if (rp.showCities) for (const c of pk1Cities) drawMarker(c, '#7b201d', '#f3d7ca', 3.2);
+    if (rp.showGates) for (const g of pk1Gates) drawMarker(g, '#f2a51a', '#5d3a00', 4.0);
+
+    const labels = [];
+    if (rp.showGateLabels) for (const g of pk1Gates) labels.push({ o: g, kind: 'gate', priority: 2000 + Number(g.level || 0) });
+    if (rp.showCityLabels) for (const c of pk1Cities) labels.push({ o: c, kind: 'city', priority: 1000 + Number(c.level || 0) });
+    labels.sort((a, b) => b.priority - a.priority || Number(a.o.id) - Number(b.o.id));
+
+    const placed = [];
+    const left = -view.x / view.scale, top = -view.y / view.scale;
+    const right = left + canvas.clientWidth / view.scale, bottom = top + canvas.clientHeight / view.scale;
+    const overlaps = (a, b) => !(a.r < b.l || a.l > b.r || a.b < b.t || a.t > b.b);
+    const candidatesPx = [[0,-15],[0,15],[16,0],[-16,0],[15,-13],[-15,-13],[15,13],[-15,13],[0,-28],[0,28]];
+
+    context.save();
+    for (const item of labels) {
+      const o = item.o;
+      const anchor = gameToWorld(Number(o.center_x), Number(o.center_y));
+      if (!anchor || anchor.x < left - 100 / view.scale || anchor.x > right + 100 / view.scale || anchor.y < top - 100 / view.scale || anchor.y > bottom + 100 / view.scale) continue;
+      const screenFont = item.kind === 'gate' ? 12.5 : 12;
+      const fs = screenFont / view.scale;
+      context.font = `700 ${fs}px "Noto Sans JP","Yu Gothic UI","Hiragino Sans","Meiryo",sans-serif`;
+      context.textAlign = 'center'; context.textBaseline = 'middle';
+      const tw = context.measureText(o.name).width;
+      const padX = 4.5 / view.scale, padY = 2 / view.scale;
+      const w = tw + padX * 2, h = fs * 1.18 + padY * 2;
+      let chosen = null;
+      for (const [oxPx, oyPx] of candidatesPx) {
+        const cx = anchor.x + oxPx / view.scale;
+        const cy = anchor.y + oyPx / view.scale;
+        const box = { l: cx - w/2, r: cx + w/2, t: cy - h/2, b: cy + h/2, cx, cy };
+        if (!placed.some(p => overlaps(box, p))) { chosen = box; break; }
+      }
+      if (!chosen) continue;
+      placed.push(chosen);
+
+      const dist = Math.hypot(chosen.cx - anchor.x, chosen.cy - anchor.y);
+      if (dist > 9 / view.scale) {
+        context.strokeStyle = item.kind === 'gate' ? 'rgba(119,76,0,.75)' : 'rgba(25,36,46,.7)';
+        context.lineWidth = 1 / view.scale;
+        context.beginPath(); context.moveTo(anchor.x, anchor.y); context.lineTo(chosen.cx, chosen.cy); context.stroke();
+      }
+      context.lineJoin = 'round';
+      context.miterLimit = 2;
+      context.strokeStyle = 'rgba(12,22,31,.96)';
+      context.lineWidth = 3.2 / view.scale;
+      context.strokeText(o.name, chosen.cx, chosen.cy);
+      context.fillStyle = item.kind === 'gate' ? '#ffd166' : '#f8fbff';
+      context.fillText(o.name, chosen.cx, chosen.cy);
     }
-    const drawMarker=(o,fill,stroke,rScreen)=>{const w=gameToWorld(Number(o.center_x),Number(o.center_y));if(!w)return;const r=Math.max(2.2,rScreen/view.scale);context.beginPath();context.arc(w.x,w.y,r,0,Math.PI*2);context.fillStyle=fill;context.fill();context.strokeStyle=stroke;context.lineWidth=Math.max(.7,1/view.scale);context.stroke();};
-    if(rp.showCities) for(const c of pk1Cities) drawMarker(c,'#7b201d','#f3d7ca',3.2);
-    if(rp.showGates) for(const g of pk1Gates) drawMarker(g,'#f2a51a','#5d3a00',4.0);
+    context.restore();
   }
 
   function drawRouteOverlay(context) {

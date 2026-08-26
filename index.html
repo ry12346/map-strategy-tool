@@ -65,14 +65,6 @@
         </div>
 
         <div class="tool-section">
-          <div class="section-title">攻略対象</div>
-          <button class="tool-button" data-tool="castle" type="button"><span class="tool-icon">城</span><span>城</span></button>
-          <button class="tool-button" data-tool="gate" type="button"><span class="tool-icon">関</span><span>関所</span></button>
-          <button class="tool-button" data-tool="bridge" type="button"><span class="tool-icon">橋</span><span>橋</span></button>
-          <button class="tool-button" data-tool="station" type="button"><span class="tool-icon">駅</span><span>駅路</span></button>
-        </div>
-
-        <div class="tool-section">
           <div class="section-title">作戦</div>
           <button class="tool-button" data-tool="arrow" type="button"><span class="tool-icon">➜</span><span>侵攻</span></button>
           <button class="tool-button" data-tool="defense" type="button"><span class="tool-icon">┻</span><span>防衛線</span></button>
@@ -211,7 +203,8 @@
             <summary>マップ表示</summary>
             <label class="route-check"><input id="showGateMarkers" type="checkbox" checked><span>関所マーカー</span></label>
             <label class="route-check"><input id="showCityMarkers" type="checkbox"><span>城マーカー</span></label>
-            <label class="route-check"><input id="showPlaceLabels" type="checkbox" checked><span>日本語名称</span></label>
+            <label class="route-check"><input id="showGateLabels" type="checkbox" checked><span>関所名</span></label>
+            <label class="route-check"><input id="showCityLabels" type="checkbox" checked><span>城名</span></label>
           </details>
 
           <div id="routeResult" class="route-result">経路点を2点以上指定してください。</div>
@@ -280,7 +273,7 @@
         </section>
         <section>
           <h3>3. 作戦記号</h3>
-          <p>左のツールを選び、マップ上をクリックまたはドラッグして配置します。選択ツールでは移動と属性編集ができます。</p>
+          <p>左のツールを選び、マップ上をクリックして配置します。配置済みの記号はどのツール選択中でもドラッグで移動できます。選択すると四隅にサイズ変更ハンドルが表示されます。防衛線は端点で長さ変更、青い回転ハンドルで角度変更ができます。</p>
         </section>
         <section>
           <h3>4. 保存と共有</h3>
@@ -290,7 +283,10 @@
           <h3>主な操作</h3>
           <dl class="shortcut-list">
             <div><dt>マウスホイール</dt><dd>拡大・縮小</dd></div>
-            <div><dt>右ドラッグ / Space＋ドラッグ</dt><dd>マップ移動</dd></div>
+            <div><dt>地図上をドラッグ</dt><dd>マップ移動</dd></div>
+            <div><dt>記号上をドラッグ</dt><dd>記号移動</dd></div>
+            <div><dt>選択記号の四隅をドラッグ</dt><dd>サイズ変更</dd></div>
+            <div><dt>防衛線の青いハンドルをドラッグ</dt><dd>回転</dd></div>
             <div><dt>Ctrl＋Z / Ctrl＋Y</dt><dd>元に戻す / やり直す</dd></div>
             <div><dt>Delete</dt><dd>選択記号を削除</dd></div>
             <div><dt>V / H / R</dt><dd>選択 / マップ移動 / 経路点追加</dd></div>
