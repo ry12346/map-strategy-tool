@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 9;
+  const APP_VERSION = 10;
   const MAX_HISTORY = 80;
   const MIN_ZOOM = 0.03;
   const MAX_ZOOM = 12;
@@ -9,7 +9,7 @@
   const PK1_HEIGHT = 3250;
   const PK1_DISPLAY_WIDTH = 2595;
   const PK1_DISPLAY_HEIGHT = 2134;
-  const PK1_BACKGROUND = { builtin: true, name: 'PK1標準マップ', type: 'image/png', src: 'data/map.png', width: PK1_DISPLAY_WIDTH, height: PK1_DISPLAY_HEIGHT };
+  const PK1_BACKGROUND = { builtin: true, name: 'PK1標準マップ', type: 'image/png', src: 'map.png', width: PK1_DISPLAY_WIDTH, height: PK1_DISPLAY_HEIGHT };
   const PK1_CALIBRATION = { topLeft: { x: 0, y: 0 }, bottomRight: { x: PK1_WIDTH, y: PK1_HEIGHT } };
   const SCENARIO_KEYS = ['A', 'B', 'C'];
   const PHASES = ['共通', '第1段階', '第2段階', '第3段階', '予備'];
@@ -1651,9 +1651,14 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       backgroundImage = null;
       return;
     }
-    const source = project.background.dataUrl || project.background.src;
+    // Built-in PK1 maps always use the current bundled asset path. This also
+    // migrates older .nssmap files that stored data/map.png in background.src.
+    const source = project.background.builtin
+      ? PK1_BACKGROUND.src
+      : (project.background.dataUrl || project.background.src);
     if (!source) { backgroundImage = null; return; }
     backgroundImage = await imageFromSource(source);
+    if (project.background.builtin) project.background = { ...PK1_BACKGROUND };
     project.background.width = backgroundImage.naturalWidth;
     project.background.height = backgroundImage.naturalHeight;
   }
