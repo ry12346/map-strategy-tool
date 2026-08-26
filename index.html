@@ -49,10 +49,7 @@
           <button class="tool-button active" data-tool="select" type="button" title="選択・移動 (V)">
             <span class="tool-icon pointer-icon">↖</span><span>選択</span>
           </button>
-          <button class="tool-button" data-tool="pan" type="button" title="マップ移動 (H)">
-            <span class="tool-icon">✥</span><span>移動</span>
-          </button>
-        </div>
+</div>
 
         <div class="tool-section">
           <div class="section-title">部隊・拠点</div>
@@ -97,6 +94,12 @@
           </div>
         </div>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
+        <div id="placeContextMenu" class="place-context-menu" hidden>
+          <div id="placeContextTitle" class="place-context-title"></div>
+          <button id="placeContextRouteBtn" type="button">経路点に追加</button>
+          <button id="placeContextCopyBtn" type="button">座標をコピー</button>
+          <button id="placeContextGateBtn" type="button" hidden>この関所を通行不可</button>
+        </div>
       </section>
 
       <aside id="inspector" class="inspector" aria-label="属性とレイヤー">
@@ -163,6 +166,30 @@
 
 
 
+        <section class="panel-section scenario-section">
+          <div class="section-heading">
+            <h3>作戦案</h3>
+          </div>
+          <div class="scenario-tabs" role="tablist" aria-label="作戦案の切り替え">
+            <button class="scenario-tab active" type="button" data-scenario="A">作戦案A</button>
+            <button class="scenario-tab" type="button" data-scenario="B">作戦案B</button>
+            <button class="scenario-tab" type="button" data-scenario="C">作戦案C</button>
+          </div>
+        </section>
+
+        <section class="panel-section timeline-section">
+          <div class="section-heading">
+            <h3>作戦タイムライン</h3>
+            <button id="timelineAddBtn" class="text-button" type="button">＋追加</button>
+          </div>
+          <div class="timeline-nav">
+            <button id="timelinePrevBtn" class="button ghost" type="button" title="前の工程">←</button>
+            <span id="timelineCurrentLabel" class="timeline-current">工程なし</span>
+            <button id="timelineNextBtn" class="button ghost" type="button" title="次の工程">→</button>
+          </div>
+          <div id="timelineList" class="timeline-list"></div>
+        </section>
+
         <section class="panel-section phase-filter-section">
           <div class="section-heading">
             <h3>表示する段階</h3>
@@ -176,16 +203,7 @@
             <option value="予備">共通＋予備</option>
           </select>
         </section>
-
-        <section class="panel-section coordinate-section">
-          <div class="section-heading">
-            <h3>ゲーム座標</h3>
-            <button id="calibrationBtn" class="text-button" type="button">設定</button>
-          </div>
-          <p id="calibrationSummary" class="muted">未設定</p>
-        </section>
-
-        <section class="panel-section layer-section">
+<section class="panel-section layer-section">
           <div class="section-heading">
             <h3>配置済み記号</h3>
             <span id="objectCount" class="count-badge">0</span>
@@ -209,6 +227,10 @@
             <button id="routeUndoPointBtn" class="button ghost" type="button">1点戻す</button>
             <button id="routeClearBtn" class="button ghost" type="button">クリア</button>
           </div>
+          <div class="route-alternatives">
+            <label class="route-check"><input id="showAltRoute2" type="checkbox"><span>経路候補2を表示</span></label>
+            <label class="route-check"><input id="showAltRoute3" type="checkbox"><span>経路候補3を表示</span></label>
+          </div>
 <label class="route-field">
             <span>城・関所検索</span>
             <div class="route-search-row">
@@ -229,7 +251,7 @@
             <div id="gateBlockList" class="gate-block-list"></div>
           </details>
 
-          <details class="route-details">
+          <details class="route-details" open>
             <summary>マップ表示</summary>
             <label class="route-check"><input id="showGateMarkers" type="checkbox" checked><span>関所マーカー</span></label>
             <label class="route-check"><input id="showCityMarkers" type="checkbox"><span>城マーカー</span></label>
@@ -237,7 +259,7 @@
             <label class="route-check"><input id="showCityLabels" type="checkbox" checked><span>城名</span></label>
           </details>
 
-          <div id="routeResult" class="route-result">経路点を2点以上指定してください。</div>
+          <div id="routeResult" class="route-result"></div>
         </section>
       </aside>
     </main>
@@ -271,15 +293,23 @@
         </section>
         <section>
           <h3>2. 経路探索</h3>
-          <p>左の「経路」を選び、開始・経由・到着地点を順番にクリックします。「経路計算」で山・河川・海などの通行不可マスを避けた8方向の最短経路を求めます。関所を個別に遮断して迂回路も比較できます。</p>
+          <p>左の「経路」を選び、開始・経由・到着地点を順番にクリックします。「経路計算」で山・河川・海などを避けた陸路の最短経路を求めます。必要なときだけ「経路候補2」「経路候補3」をチェックすると代替経路も同時表示できます。</p>
         </section>
         <section>
-          <h3>3. 作戦記号</h3>
-          <p>左のツールを選び、マップ上をクリックして配置します。配置済みの記号はどのツール選択中でもドラッグで移動できます。選択すると四隅にサイズ変更ハンドルが表示されます。防衛線は端点で長さ変更、青い回転ハンドルで角度変更ができます。</p>
+          <h3>3. 城・関所</h3>
+          <p>城または関所を右クリックすると、経路点への追加、座標コピー、関所の通行不可切り替えができます。右側の「マップ表示」で城名・関所名やマーカーを個別に表示／非表示できます。</p>
         </section>
         <section>
-          <h3>4. 保存と共有</h3>
-          <p>「作戦保存」は編集可能な <code>.nssmap</code> ファイルです。「共有用HTML」は閲覧専用の単一HTMLを作成します。Discord等でファイル共有できます。</p>
+          <h3>4. 作戦案とタイムライン</h3>
+          <p>作戦案A/B/Cはそれぞれ独立した記号・経路・タイムラインを保持します。タイムラインに時刻、工程名、作戦段階を登録し、「表示」でその段階へ切り替えられます。</p>
+        </section>
+        <section>
+          <h3>5. 作戦記号</h3>
+          <p>左のツールを選び、マップ上をクリックして配置します。記号上のドラッグは記号移動、それ以外の場所のドラッグはマップ移動です。選択するとサイズ変更ハンドルが表示され、防衛線は端点変更と回転ができます。</p>
+        </section>
+        <section>
+          <h3>6. 保存と共有</h3>
+          <p>「作戦保存」は編集可能な <code>.nssmap</code> ファイルです。「共有用HTML」は閲覧専用の単一HTMLを作成します。</p>
         </section>
         <section>
           <h3>主な操作</h3>
@@ -291,7 +321,7 @@
             <div><dt>防衛線の青いハンドルをドラッグ</dt><dd>回転</dd></div>
             <div><dt>Ctrl＋Z / Ctrl＋Y</dt><dd>元に戻す / やり直す</dd></div>
             <div><dt>Delete</dt><dd>選択記号を削除</dd></div>
-            <div><dt>V / H / R</dt><dd>選択 / マップ移動 / 経路点追加</dd></div>
+            <div><dt>V / R</dt><dd>選択 / 経路点追加</dd></div>
           </dl>
         </section>
       </div>
@@ -333,6 +363,7 @@
   </dialog>
 
   <script src="data/pk1_embedded_data.js"></script>
+  <script src="data/pk1_route_worker_source.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

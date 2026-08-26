@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 1;
+  const APP_VERSION = 7;
   const MAX_HISTORY = 80;
   const MIN_ZOOM = 0.03;
   const MAX_ZOOM = 12;
@@ -11,6 +11,8 @@
   const PK1_DISPLAY_HEIGHT = 2134;
   const PK1_BACKGROUND = { builtin: true, name: 'PK1標準マップ', type: 'image/png', src: 'data/map.png', width: PK1_DISPLAY_WIDTH, height: PK1_DISPLAY_HEIGHT };
   const PK1_CALIBRATION = { topLeft: { x: 0, y: 0 }, bottomRight: { x: PK1_WIDTH, y: PK1_HEIGHT } };
+  const SCENARIO_KEYS = ['A', 'B', 'C'];
+  const PHASES = ['共通', '第1段階', '第2段階', '第3段階', '予備'];
   const PK1_DISPLAY_TRANSFORM = { m00:1.3811020352, m01:-1.1998330080000001, m10:0.7361070080000001, m11:0.568297248, tx:2225.7348256, ty:-536.8040288000001, im00:0.34068904150606916, im01:0.7192889969139248, im10:-0.44128946934724644, im11:0.8279581332661488 };
 
   const TYPE_META = {
@@ -39,6 +41,7 @@
   let activeTool = 'select';
   let selectedId = null;
   let phaseFilter = 'すべて';
+  let activeScenario = 'A';
   let history = [];
   let future = [];
   let interaction = null;
@@ -59,6 +62,8 @@
   let routeWorker = null;
   let routeBusy = false;
   let lastGamePosition = null;
+  let contextPlace = null;
+  let pk1LabelHitBoxes = [];
 
   document.addEventListener('DOMContentLoaded', init);
 
@@ -114,10 +119,14 @@
       'routeBadge', 'routePoints', 'routeCalculateBtn', 'routeUndoPointBtn', 'routeClearBtn',
       'placeSearch', 'placeSearchList', 'placeCenterBtn', 'placeAddBtn',
       'gateBlockClearBtn', 'gateBlockAllBtn', 'gateFilter', 'gateBlockList',
-      'showGateMarkers', 'showCityMarkers', 'showGateLabels', 'showCityLabels', 'routeResult'
+      'showGateMarkers', 'showCityMarkers', 'showGateLabels', 'showCityLabels', 'routeResult',
+      'showAltRoute2', 'showAltRoute3',
+      'timelineAddBtn', 'timelinePrevBtn', 'timelineNextBtn', 'timelineCurrentLabel', 'timelineList',
+      'placeContextMenu', 'placeContextTitle', 'placeContextRouteBtn', 'placeContextCopyBtn', 'placeContextGateBtn'
     ];
     for (const id of ids) refs[id] = document.getElementById(id);
     refs.toolButtons = Array.from(document.querySelectorAll('.tool-button[data-tool]'));
+    refs.scenarioButtons = Array.from(document.querySelectorAll('.scenario-tab[data-scenario]'));
   }
 
   function bindEvents() {
@@ -126,9 +135,9 @@
     refs.newProjectBtn.addEventListener('click', newProject);
     refs.builtinMapBtn.addEventListener('click', activateBuiltinMap);
     refs.emptyBuiltinMapBtn.addEventListener('click', activateBuiltinMap);
-    refs.loadMapBtn.addEventListener('click', () => refs.mapFileInput.click());
-    refs.emptyLoadMapBtn.addEventListener('click', () => refs.mapFileInput.click());
-    refs.mapFileInput.addEventListener('change', handleMapFile);
+    if (refs.loadMapBtn && refs.mapFileInput) refs.loadMapBtn.addEventListener('click', () => refs.mapFileInput.click());
+    if (refs.emptyLoadMapBtn && refs.mapFileInput) refs.emptyLoadMapBtn.addEventListener('click', () => refs.mapFileInput.click());
+    if (refs.mapFileInput) refs.mapFileInput.addEventListener('change', handleMapFile);
     refs.saveProjectBtn.addEventListener('click', saveProjectFile);
     refs.loadProjectBtn.addEventListener('click', () => refs.projectFileInput.click());
     refs.projectFileInput.addEventListener('change', handleProjectFile);
@@ -168,11 +177,11 @@
       requestRender();
     });
 
-    refs.calibrationBtn.addEventListener('click', openCalibrationDialog);
-    refs.clearCalibrationBtn.addEventListener('click', clearCalibration);
-    refs.calibrationForm.addEventListener('submit', saveCalibration);
+    if (refs.calibrationBtn) refs.calibrationBtn.addEventListener('click', openCalibrationDialog);
+    if (refs.clearCalibrationBtn) refs.clearCalibrationBtn.addEventListener('click', clearCalibration);
+    if (refs.calibrationForm) refs.calibrationForm.addEventListener('submit', saveCalibration);
 
-    refs.routeCalculateBtn.addEventListener('click', calculateRoute);
+    refs.routeCalculateBtn.addEventListener('click', () => calculateRoute(false));
     refs.routeUndoPointBtn.addEventListener('click', undoRoutePoint);
     refs.routeClearBtn.addEventListener('click', clearRoute);
     refs.routePoints.addEventListener('input', routePointsChanged);
@@ -185,6 +194,15 @@
     refs.showCityMarkers.addEventListener('change', routeDisplayChanged);
     refs.showGateLabels.addEventListener('change', routeDisplayChanged);
     refs.showCityLabels.addEventListener('change', routeDisplayChanged);
+    refs.showAltRoute2.addEventListener('change', alternateRouteChanged);
+    refs.showAltRoute3.addEventListener('change', alternateRouteChanged);
+    refs.scenarioButtons.forEach(btn => btn.addEventListener('click', () => switchScenario(btn.dataset.scenario)));
+    refs.timelineAddBtn.addEventListener('click', addTimelineItem);
+    refs.timelinePrevBtn.addEventListener('click', () => stepTimeline(-1));
+    refs.timelineNextBtn.addEventListener('click', () => stepTimeline(1));
+    refs.placeContextRouteBtn.addEventListener('click', contextAddRoutePoint);
+    refs.placeContextCopyBtn.addEventListener('click', contextCopyCoordinate);
+    refs.placeContextGateBtn.addEventListener('click', contextToggleGateBlock);
 
     refs.fitBtn.addEventListener('click', fitView);
     refs.zoomInBtn.addEventListener('click', () => zoomAt(1.25, canvas.clientWidth / 2, canvas.clientHeight / 2));
@@ -196,9 +214,10 @@
     canvas.addEventListener('pointerup', onPointerUp);
     canvas.addEventListener('pointercancel', onPointerUp);
     canvas.addEventListener('wheel', onWheel, { passive: false });
-    canvas.addEventListener('contextmenu', e => e.preventDefault());
+    canvas.addEventListener('contextmenu', onMapContextMenu);
     canvas.addEventListener('dblclick', onDoubleClick);
 
+    document.addEventListener('pointerdown', e => { if (refs.placeContextMenu && !refs.placeContextMenu.hidden && !e.target.closest('.place-context-menu')) hidePlaceContextMenu(); });
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', e => { if (e.code === 'Space') spacePressed = false; });
     window.addEventListener('beforeunload', e => {
@@ -250,6 +269,10 @@
       background: { ...PK1_BACKGROUND },
       calibration: JSON.parse(JSON.stringify(PK1_CALIBRATION)),
       routePlanner: defaultRoutePlanner(),
+      timeline: [],
+      activeTimelineIndex: -1,
+      activeScenario: 'A',
+      scenarios: {},
       objects: []
     };
   }
@@ -811,12 +834,13 @@
 
   function onPointerDown(e) {
     if (!backgroundImage) return;
-    if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+    if (e.pointerType === 'mouse' && e.button === 2) return;
+    if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1) return;
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     const screen = pointerScreen(e);
     const world = screenToWorld(screen.x, screen.y, true);
-    const forcePan = activeTool === 'pan' || spacePressed || e.button === 1 || e.button === 2;
+    const forcePan = activeTool === 'pan' || spacePressed || e.button === 1;
     const handle = !forcePan ? hitSelectionHandle(world.x, world.y) : null;
     const hit = !forcePan ? hitTest(world.x, world.y) : null;
 
@@ -1081,8 +1105,9 @@
 
   function syncSelectionUI() {
     const obj = getSelected();
-    refs.noSelection.hidden = !!obj;
+    if (refs.noSelection) refs.noSelection.hidden = true;
     refs.propertyForm.hidden = !obj;
+    refs.inspector.classList.toggle('has-selection', !!obj);
     if (!obj) return;
     refs.propLabel.value = obj.label || '';
     refs.propDescription.value = obj.description || '';
@@ -1100,12 +1125,126 @@
     requestRender();
   }
 
+  function cloneJson(value) { return JSON.parse(JSON.stringify(value)); }
+
+  function ensureScenarios() {
+    if (!project.scenarios || typeof project.scenarios !== 'object') project.scenarios = {};
+    if (!SCENARIO_KEYS.includes(activeScenario)) activeScenario = SCENARIO_KEYS.includes(project.activeScenario) ? project.activeScenario : 'A';
+    for (const key of SCENARIO_KEYS) {
+      if (!project.scenarios[key]) {
+        project.scenarios[key] = key === activeScenario ? {
+          objects: cloneJson(project.objects || []), routePlanner: cloneJson(ensureRoutePlanner()), phaseFilter,
+          timeline: cloneJson(project.timeline || []), activeTimelineIndex: Number(project.activeTimelineIndex ?? -1)
+        } : emptyScenarioState();
+      }
+    }
+    project.activeScenario = activeScenario;
+  }
+
+  function persistCurrentScenario() {
+    ensureScenarios();
+    project.scenarios[activeScenario] = {
+      objects: cloneJson(project.objects || []),
+      routePlanner: cloneJson(ensureRoutePlanner()),
+      phaseFilter,
+      timeline: cloneJson(project.timeline || []),
+      activeTimelineIndex: Number(project.activeTimelineIndex ?? -1)
+    };
+    project.activeScenario = activeScenario;
+  }
+
+  function switchScenario(key) {
+    if (!SCENARIO_KEYS.includes(key) || key === activeScenario) return;
+    persistCurrentScenario();
+    activeScenario = key;
+    const s = normalizeScenarioState(project.scenarios[key] || emptyScenarioState());
+    project.objects = cloneJson(s.objects);
+    project.routePlanner = normalizeRoutePlanner(s.routePlanner);
+    project.timeline = normalizeTimeline(s.timeline);
+    project.activeTimelineIndex = Math.max(-1, Math.min(project.timeline.length - 1, s.activeTimelineIndex));
+    phaseFilter = s.phaseFilter;
+    project.activeScenario = key;
+    selectedId = null;
+    history = []; future = [];
+    syncAllUI();
+    showToast(`作戦案${key}に切り替えました`);
+  }
+
+  function syncScenarioUI() {
+    refs.scenarioButtons.forEach(btn => {
+      const active = btn.dataset.scenario === activeScenario;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+  }
+
+  function addTimelineItem() {
+    if (!Array.isArray(project.timeline)) project.timeline = [];
+    const phase = ['第1段階','第2段階','第3段階','予備'][Math.min(project.timeline.length, 3)] || '第1段階';
+    project.timeline.push({ time: '', title: '', phase });
+    project.activeTimelineIndex = project.timeline.length - 1;
+    dirty = true;
+    renderTimeline();
+  }
+
+  function activateTimelineItem(index) {
+    const items = project.timeline || [];
+    if (index < 0 || index >= items.length) return;
+    project.activeTimelineIndex = index;
+    phaseFilter = items[index].phase || 'すべて';
+    refs.phaseFilter.value = phaseFilter;
+    dirty = true;
+    renderTimeline(); renderLayerList(); requestRender();
+  }
+
+  function stepTimeline(delta) {
+    const items = project.timeline || [];
+    if (!items.length) return;
+    let idx = Number(project.activeTimelineIndex ?? -1);
+    if (idx < 0) idx = delta > 0 ? 0 : items.length - 1;
+    else idx = Math.max(0, Math.min(items.length - 1, idx + delta));
+    activateTimelineItem(idx);
+  }
+
+  function renderTimeline() {
+    if (!refs.timelineList) return;
+    const items = project.timeline || [];
+    refs.timelineList.textContent = '';
+    const active = Number(project.activeTimelineIndex ?? -1);
+    refs.timelineCurrentLabel.textContent = active >= 0 && items[active]
+      ? `${items[active].time || '--:--'} ${items[active].title || items[active].phase}` : '工程なし';
+    refs.timelinePrevBtn.disabled = !items.length || active === 0;
+    refs.timelineNextBtn.disabled = !items.length || active === items.length - 1;
+    if (!items.length) {
+      const empty = document.createElement('div'); empty.className = 'timeline-empty'; empty.textContent = '工程を追加すると時刻順の作戦進行を管理できます。';
+      refs.timelineList.appendChild(empty); return;
+    }
+    items.forEach((item, index) => {
+      const row = document.createElement('div'); row.className = 'timeline-item' + (index === active ? ' active' : '');
+      const time = document.createElement('input'); time.type = 'time'; time.value = item.time || ''; time.className = 'timeline-time';
+      const title = document.createElement('input'); title.type = 'text'; title.value = item.title || ''; title.maxLength = 60; title.placeholder = '工程名'; title.className = 'timeline-title';
+      const phase = document.createElement('select'); phase.className = 'timeline-phase';
+      for (const p of PHASES) { const op=document.createElement('option'); op.value=p; op.textContent=p; phase.appendChild(op); } phase.value = item.phase;
+      const go = document.createElement('button'); go.type='button'; go.className='timeline-go'; go.textContent='表示';
+      const del = document.createElement('button'); del.type='button'; del.className='timeline-delete'; del.textContent='×'; del.title='削除';
+      time.addEventListener('input',()=>{ item.time=time.value; dirty=true; if(index===active) refs.timelineCurrentLabel.textContent=`${item.time||'--:--'} ${item.title||item.phase}`; });
+      title.addEventListener('input',()=>{ item.title=title.value; dirty=true; if(index===active) refs.timelineCurrentLabel.textContent=`${item.time||'--:--'} ${item.title||item.phase}`; });
+      phase.addEventListener('change',()=>{ item.phase=phase.value; dirty=true; if(index===active) activateTimelineItem(index); });
+      go.addEventListener('click',()=>activateTimelineItem(index));
+      del.addEventListener('click',()=>{ project.timeline.splice(index,1); if(project.activeTimelineIndex > index) project.activeTimelineIndex--; else if(project.activeTimelineIndex >= project.timeline.length) project.activeTimelineIndex=project.timeline.length-1; dirty=true; renderTimeline(); });
+      row.append(time,title,phase,go,del); refs.timelineList.appendChild(row);
+    });
+  }
+
   function syncAllUI() {
     refs.projectName.value = project.name || '新規作戦';
     refs.emptyState.hidden = !!backgroundImage;
     syncSelectionUI();
     renderLayerList();
-    updateCalibrationSummary();
+    if (refs.calibrationSummary) updateCalibrationSummary();
+    syncScenarioUI();
+    if (refs.phaseFilter) refs.phaseFilter.value = phaseFilter;
+    renderTimeline();
     updateHistoryButtons();
     refs.deleteBtn.disabled = !selectedId;
     syncRouteUI();
@@ -1262,6 +1401,7 @@
   }
 
   function serializeProject() {
+    persistCurrentScenario();
     project.updatedAt = new Date().toISOString();
     project.name = refs.projectName ? (refs.projectName.value.trim() || project.name || '名称未設定') : project.name;
     return JSON.stringify(project);
@@ -1271,6 +1411,9 @@
     try {
       const parsed = normalizeProject(JSON.parse(snapshot));
       project = parsed;
+      activeScenario = SCENARIO_KEYS.includes(project.activeScenario) ? project.activeScenario : 'A';
+      const ss = project.scenarios && project.scenarios[activeScenario];
+      phaseFilter = ss && ['すべて', ...PHASES].includes(ss.phaseFilter) ? ss.phaseFilter : 'すべて';
       selectedId = null;
       await loadBackgroundFromProject();
       syncAllUI();
@@ -1290,8 +1433,9 @@
     future = [];
     view = { scale: 1, x: 0, y: 0 };
     dirty = false;
-    refs.mapFileInput.value = '';
-    refs.projectFileInput.value = '';
+    if (refs.mapFileInput) refs.mapFileInput.value = '';
+    if (refs.projectFileInput) refs.projectFileInput.value = '';
+    activeScenario = 'A';
     loadBackgroundFromProject().then(() => { syncAllUI(); fitView(); });
     syncAllUI();
     requestRender();
@@ -1299,7 +1443,7 @@
 
   function handleMapFile() {
     const file = refs.mapFileInput.files && refs.mapFileInput.files[0];
-    refs.mapFileInput.value = '';
+    if (refs.mapFileInput) refs.mapFileInput.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       showToast('画像ファイルを選択してください', true);
@@ -1342,6 +1486,7 @@
     }
     project.name = refs.projectName.value.trim() || '名称未設定';
     project.updatedAt = new Date().toISOString();
+    persistCurrentScenario();
     const json = JSON.stringify(project, null, 2);
     const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
     downloadBlob(blob, safeFilename(project.name) + '.nssmap');
@@ -1360,6 +1505,9 @@
       try {
         const parsed = normalizeProject(JSON.parse(reader.result));
         project = parsed;
+        activeScenario = SCENARIO_KEYS.includes(project.activeScenario) ? project.activeScenario : 'A';
+        const ss = project.scenarios && project.scenarios[activeScenario];
+        phaseFilter = ss && ['すべて', ...PHASES].includes(ss.phaseFilter) ? ss.phaseFilter : 'すべて';
         selectedId = null;
         history = [];
         future = [];
@@ -1377,8 +1525,55 @@
     reader.readAsText(file, 'utf-8');
   }
 
+  function normalizeObjectList(items) {
+    if (!Array.isArray(items)) return [];
+    return items.filter(o => o && TYPE_META[o.type]).map(o => {
+      const base = createObject(o.type);
+      return {
+        ...base, ...o,
+        id: String(o.id || makeId()),
+        label: String(o.label == null ? base.label : o.label),
+        description: String(o.description || ''),
+        color: normalizeHex(o.color, base.color),
+        opacity: clampNumber(o.opacity, 0.05, 1, base.opacity),
+        size: clampNumber(o.size, 8, 300, base.size),
+        lineWidth: clampNumber(o.lineWidth, 1, 50, base.lineWidth),
+        phase: PHASES.includes(o.phase) ? o.phase : '共通',
+        hidden: Boolean(o.hidden),
+        x: clampNumber(o.x, -1000000, 1000000, 0),
+        y: clampNumber(o.y, -1000000, 1000000, 0),
+        x2: clampNumber(o.x2, -1000000, 1000000, 0),
+        y2: clampNumber(o.y2, -1000000, 1000000, 0)
+      };
+    });
+  }
+
+  function normalizeTimeline(value) {
+    if (!Array.isArray(value)) return [];
+    return value.slice(0, 30).map(item => ({
+      time: /^\d{2}:\d{2}$/.test(String(item?.time || '')) ? String(item.time) : '',
+      title: String(item?.title || '').slice(0, 60),
+      phase: PHASES.includes(item?.phase) ? item.phase : '第1段階'
+    }));
+  }
+
+  function emptyScenarioState() {
+    return { objects: [], routePlanner: defaultRoutePlanner(), phaseFilter: 'すべて', timeline: [], activeTimelineIndex: -1 };
+  }
+
+  function normalizeScenarioState(raw) {
+    const s = raw && typeof raw === 'object' ? raw : {};
+    return {
+      objects: normalizeObjectList(s.objects),
+      routePlanner: normalizeRoutePlanner(s.routePlanner),
+      phaseFilter: ['すべて', ...PHASES].includes(s.phaseFilter) ? s.phaseFilter : 'すべて',
+      timeline: normalizeTimeline(s.timeline),
+      activeTimelineIndex: Number.isInteger(Number(s.activeTimelineIndex)) ? Number(s.activeTimelineIndex) : -1
+    };
+  }
+
   function normalizeProject(data) {
-    if (!data || !Array.isArray(data.objects)) throw new Error('Invalid project');
+    if (!data || (!Array.isArray(data.objects) && !data.scenarios)) throw new Error('Invalid project');
     const normalized = {
       app: 'shinsen-strategy-map',
       version: Number(data.version) || 1,
@@ -1388,31 +1583,29 @@
       background: data.background || { ...PK1_BACKGROUND },
       calibration: data.calibration || JSON.parse(JSON.stringify(PK1_CALIBRATION)),
       routePlanner: normalizeRoutePlanner(data.routePlanner),
-      objects: []
+      timeline: normalizeTimeline(data.timeline),
+      activeTimelineIndex: Number.isInteger(Number(data.activeTimelineIndex)) ? Number(data.activeTimelineIndex) : -1,
+      activeScenario: SCENARIO_KEYS.includes(data.activeScenario) ? data.activeScenario : 'A',
+      scenarios: {},
+      objects: normalizeObjectList(data.objects)
     };
-
-    normalized.objects = data.objects
-      .filter(o => o && TYPE_META[o.type])
-      .map(o => {
-        const base = createObject(o.type);
-        return {
-          ...base,
-          ...o,
-          id: String(o.id || makeId()),
-          label: String(o.label == null ? base.label : o.label),
-          description: String(o.description || ''),
-          color: normalizeHex(o.color, base.color),
-          opacity: clampNumber(o.opacity, 0.05, 1, base.opacity),
-          size: clampNumber(o.size, 8, 300, base.size),
-          lineWidth: clampNumber(o.lineWidth, 1, 50, base.lineWidth),
-          phase: ['共通', '第1段階', '第2段階', '第3段階', '予備'].includes(o.phase) ? o.phase : '共通',
-          hidden: Boolean(o.hidden),
-          x: clampNumber(o.x, -1000000, 1000000, 0),
-          y: clampNumber(o.y, -1000000, 1000000, 0),
-          x2: clampNumber(o.x2, -1000000, 1000000, 0),
-          y2: clampNumber(o.y2, -1000000, 1000000, 0)
-        };
-      });
+    for (const key of SCENARIO_KEYS) {
+      const raw = data.scenarios && data.scenarios[key];
+      if (raw) normalized.scenarios[key] = normalizeScenarioState(raw);
+      else if (key === normalized.activeScenario) normalized.scenarios[key] = {
+        objects: JSON.parse(JSON.stringify(normalized.objects)),
+        routePlanner: normalizeRoutePlanner(normalized.routePlanner),
+        phaseFilter: 'すべて',
+        timeline: normalizeTimeline(normalized.timeline),
+        activeTimelineIndex: normalized.activeTimelineIndex
+      };
+      else normalized.scenarios[key] = emptyScenarioState();
+    }
+    const active = normalized.scenarios[normalized.activeScenario];
+    normalized.objects = JSON.parse(JSON.stringify(active.objects));
+    normalized.routePlanner = normalizeRoutePlanner(active.routePlanner);
+    normalized.timeline = normalizeTimeline(active.timeline);
+    normalized.activeTimelineIndex = active.activeTimelineIndex;
     return normalized;
   }
 
@@ -1667,6 +1860,7 @@
     try {
       project.name = refs.projectName.value.trim() || '名称未設定';
       project.updatedAt = new Date().toISOString();
+      persistCurrentScenario();
       const exportProject = JSON.parse(JSON.stringify(project));
       if (!exportProject.background.dataUrl) {
         const embed = document.createElement('canvas');
@@ -1742,7 +1936,8 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
   }
 
   function defaultRoutePlanner() {
-    return { points: [], mode: 'land', blockedGates: [], showGates: true, showCities: false, showGateLabels: true, showCityLabels: true, path: [], result: null };
+    return { points: [], mode: 'land', blockedGates: [], showGates: true, showCities: false, showGateLabels: true, showCityLabels: true,
+      showAlt2: false, showAlt3: false, path: [], altPaths: [], result: null };
   }
 
   function normalizeRoutePlanner(value) {
@@ -1751,15 +1946,14 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     const points = Array.isArray(value.points) ? value.points.filter(p => Array.isArray(p) && p.length >= 2).map(p => [Math.round(Number(p[0])), Math.round(Number(p[1]))]).filter(p => p.every(Number.isFinite)) : [];
     const blocked = Array.isArray(value.blockedGates) ? value.blockedGates.map(Number).filter(Number.isFinite) : [];
     const path = Array.isArray(value.path) ? value.path.map(Number).filter(Number.isFinite) : [];
+    const altPaths = Array.isArray(value.altPaths) ? value.altPaths.slice(0,2).map(a => Array.isArray(a) ? a.map(Number).filter(Number.isFinite) : []) : [];
     return {
-      points,
-      mode: 'land',
-      blockedGates: blocked,
-      showGates: value.showGates !== false,
-      showCities: value.showCities === true,
+      points, mode: 'land', blockedGates: blocked,
+      showGates: value.showGates !== false, showCities: value.showCities === true,
       showGateLabels: value.showGateLabels !== false && value.showLabels !== false,
       showCityLabels: value.showCityLabels !== false && value.showLabels !== false,
-      path,
+      showAlt2: value.showAlt2 === true, showAlt3: value.showAlt3 === true,
+      path, altPaths,
       result: value.result && typeof value.result === 'object' ? value.result : null
     };
   }
@@ -1788,7 +1982,8 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     }
     populatePlaceSearch(); populateGateBlockList();
     if (!routeWorker) {
-      const workerSource = "const W=2000,H=3250,N=W*H;let bitset=null;let gScore=new Uint32Array(N),seen=new Uint16Array(N),parentDir=new Uint8Array(N),generation=1;const dirs=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];function basePassable(i){return !!bitset&&((bitset[i>>3]>>(i&7))&1)!==0}function makeBlocked(gates,ids){const wanted=new Set(ids||[]),out=new Set();if(!wanted.size)return out;for(const g of gates){if(!wanted.has(Number(g.id)))continue;for(let y=Number(g.ymin);y<=Number(g.ymax);y++)for(let x=Number(g.xmin);x<=Number(g.xmax);x++)out.add(y*W+x)}return out}function heuristic(x,y,gx,gy){return Math.max(Math.abs(x-gx),Math.abs(y-gy))}class Heap{constructor(){this.i=[];this.f=[];this.g=[]}get length(){return this.i.length}push(idx,fv,gv){let p=this.i.length;this.i.push(idx);this.f.push(fv);this.g.push(gv);while(p){let q=(p-1)>>1;if(this.f[q]<=fv)break;this.i[p]=this.i[q];this.f[p]=this.f[q];this.g[p]=this.g[q];p=q}this.i[p]=idx;this.f[p]=fv;this.g[p]=gv}pop(){const n=this.i.length;if(!n)return null;const oi=this.i[0],of=this.f[0],og=this.g[0],li=this.i.pop(),lf=this.f.pop(),lg=this.g.pop();if(n>1){let p=0;while(true){let a=p*2+1;if(a>=n-1)break;let b=a+1,c=(b<n-1&&this.f[b]<this.f[a])?b:a;if(this.f[c]>=lf)break;this.i[p]=this.i[c];this.f[p]=this.f[c];this.g[p]=this.g[c];p=c}this.i[p]=li;this.f[p]=lf;this.g[p]=lg}return[oi,of,og]}}function bump(){generation++;if(generation>=65535){seen.fill(0);generation=1}}function route(start,goal,blocked,maxExpand=3000000){bump();const[sx,sy]=start,[gx,gy]=goal;if(sx<0||sx>=W||sy<0||sy>=H||gx<0||gx>=W||gy<0||gy>=H)return{status:'outside'};const sidx=sy*W+sx,gidx=gy*W+gx,can=i=>basePassable(i)&&!blocked.has(i);if(!can(sidx))return{status:'start_blocked'};if(!can(gidx))return{status:'goal_blocked'};const heap=new Heap();seen[sidx]=generation;gScore[sidx]=0;parentDir[sidx]=0;heap.push(sidx,heuristic(sx,sy,gx,gy),0);let expanded=0;while(heap.length){const item=heap.pop(),idx=item[0],pg=item[2];if(seen[idx]!==generation||gScore[idx]!==pg)continue;if(idx===gidx){const rev=[idx];let cur=idx;while(cur!==sidx){const code=parentDir[cur]-1;if(code<0)return{status:'parent_error'};const[dx,dy]=dirs[code],x=cur%W,y=Math.floor(cur/W);cur=(y-dy)*W+(x-dx);rev.push(cur)}rev.reverse();return{status:'ok',path:rev,steps:rev.length-1,expanded}}if(++expanded>maxExpand)return{status:'max_expand',expanded};const x=idx%W,y=Math.floor(idx/W),ng=pg+1;for(let di=0;di<8;di++){const dx=dirs[di][0],dy=dirs[di][1],nx=x+dx,ny=y+dy;if(nx<0||nx>=W||ny<0||ny>=H)continue;const ni=ny*W+nx;if(!can(ni))continue;if(seen[ni]!==generation||ng<gScore[ni]){seen[ni]=generation;gScore[ni]=ng;parentDir[ni]=di+1;heap.push(ni,ng+heuristic(nx,ny,gx,gy),ng)}}}return{status:'no_path',expanded}}self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.buffer);self.postMessage({type:'ready'});return}if(m.type!=='route')return;try{if(!bitset)throw new Error('route data not initialized');const blocked=makeBlocked(m.gates||[],m.blockedGateIds||[]),pts=m.points||[];let total=0,direct=0,expanded=0,full=[],segments=[];for(let k=0;k<pts.length-1;k++){direct+=Math.max(Math.abs(pts[k][0]-pts[k+1][0]),Math.abs(pts[k][1]-pts[k+1][1]));const r=route(pts[k],pts[k+1],blocked,m.maxExpand||3000000);expanded+=r.expanded||0;segments.push({start:pts[k],goal:pts[k+1],status:r.status,steps:r.steps??null,expanded:r.expanded||0});if(r.status!=='ok'){self.postMessage({type:'result',status:r.status,totalSteps:null,directSteps:direct,segments,expanded});return}total+=r.steps;full=full.concat(k?r.path.slice(1):r.path)}const arr=new Uint32Array(full);self.postMessage({type:'result',status:'ok',totalSteps:total,directSteps:direct,segments,expanded,path:arr},[arr.buffer])}catch(err){self.postMessage({type:'result',status:'error',message:String(err&&err.message||err)})}};";
+      const workerSource = window.PK1_ROUTE_WORKER_SOURCE;
+      if (!workerSource) throw new Error('経路探索エンジンが読み込まれていません');
       const workerUrl = URL.createObjectURL(new Blob([workerSource], {type:'text/javascript'}));
       routeWorker = new Worker(workerUrl);
       routeWorker.onmessage = event => {
@@ -1838,8 +2033,20 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
 
   function routePointsChanged() {
     const points = routePointsFromText();
-    if (!points) { refs.routeResult.innerHTML = '<span class="route-error">座標は x,y 形式で入力してください。</span>'; return; }
-    const rp = ensureRoutePlanner(); rp.points = points; rp.path = []; rp.result = null; dirty = true; requestRender();
+    const rp = ensureRoutePlanner();
+    rp.points = points || [];
+    rp.path = []; rp.altPaths = []; rp.result = null;
+    refs.routeResult.textContent = '';
+    dirty = true; requestRender();
+  }
+
+  function alternateRouteChanged() {
+    const rp = ensureRoutePlanner();
+    rp.showAlt2 = refs.showAltRoute2.checked;
+    rp.showAlt3 = refs.showAltRoute3.checked;
+    dirty = true;
+    if (rp.points.length >= 2 && routeWorkerReady) calculateRoute(true);
+    else requestRender();
   }
 
   function routeSettingsChanged() {
@@ -1849,7 +2056,7 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     rp.showCities = refs.showCityMarkers.checked;
     rp.showGateLabels = refs.showGateLabels.checked;
     rp.showCityLabels = refs.showCityLabels.checked;
-    rp.path = []; rp.result = null; dirty = true; requestRender();
+    rp.path = []; rp.altPaths = []; rp.result = null; dirty = true; requestRender();
   }
 
   function routeDisplayChanged() {
@@ -1870,6 +2077,8 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     refs.showCityMarkers.checked = rp.showCities;
     refs.showGateLabels.checked = rp.showGateLabels;
     refs.showCityLabels.checked = rp.showCityLabels;
+    refs.showAltRoute2.checked = rp.showAlt2;
+    refs.showAltRoute3.checked = rp.showAlt3;
     if (pk1Gates.length) {
       for (const cb of refs.gateBlockList.querySelectorAll('input[type="checkbox"]')) cb.checked = rp.blockedGates.includes(Number(cb.dataset.id));
     }
@@ -1878,51 +2087,62 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
 
   function renderRouteResult() {
     const rp = ensureRoutePlanner();
-    if (!rp.points.length) { refs.routeResult.textContent = '経路点を2点以上指定してください。'; return; }
-    if (!rp.result) { refs.routeResult.textContent = `${rp.points.length}点を指定中。経路計算を実行してください。`; return; }
+    if (!rp.result) { refs.routeResult.textContent = ''; return; }
     const r = rp.result;
     if (r.status !== 'ok') {
       const labels = { outside:'マップ範囲外です', start_blocked:'開始点が通行不可です', goal_blocked:'終点が通行不可です', no_path:'到達可能な経路がありません', max_expand:'探索上限に達しました', error:'経路計算エラー' };
-      refs.routeResult.innerHTML = `<span class="route-error">${labels[r.status] || r.status}</span>`;
-      return;
+      refs.routeResult.innerHTML = `<span class="route-error">${labels[r.status] || r.status}</span>`; return;
     }
     const crossed = (r.crossedGates || []).map(id => pk1Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
     const blocked = rp.blockedGates.map(id => pk1Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
-    refs.routeResult.innerHTML = `<div class="route-ok">最短 ${r.totalSteps} マス</div><table>` +
+    const alts = Array.isArray(r.alternatives) ? r.alternatives : [];
+    let extra = '';
+    if (rp.showAlt2 && alts[0]) extra += `<div class="route-alt-summary alt2">候補2 ${alts[0].steps} マス</div>`;
+    if (rp.showAlt3 && alts[1]) extra += `<div class="route-alt-summary alt3">候補3 ${alts[1].steps} マス</div>`;
+    refs.routeResult.innerHTML = `<div class="route-ok">最短 ${r.totalSteps} マス</div>${extra}<table>` +
       `<tr><td>通過関所</td><td>${crossed.length ? crossed.join('、') : '-'}</td></tr>` +
       `<tr><td>遮断関所</td><td>${blocked.length ? blocked.join('、') : '-'}</td></tr></table>`;
   }
 
-  function calculateRoute() {
-    if (!routeWorker || !routeWorkerReady) { refs.routeResult.innerHTML = '<span class="route-error">経路データを初期化中です。1〜2秒後にもう一度お試しください。</span>'; return; }
+  function calculateRoute(silent = false) {
+    if (!routeWorker || !routeWorkerReady) {
+      if (!silent) refs.routeResult.innerHTML = '<span class="route-error">経路データを初期化中です。1〜2秒後にもう一度お試しください。</span>';
+      return;
+    }
     const points = routePointsFromText();
-    if (!points || points.length < 2) { refs.routeResult.innerHTML = '<span class="route-error">経路点を2点以上指定してください。</span>'; return; }
-    if (points.some(p => p[0] < 0 || p[0] >= PK1_WIDTH || p[1] < 0 || p[1] >= PK1_HEIGHT)) { refs.routeResult.innerHTML = '<span class="route-error">PK1マップ範囲外の座標があります。</span>'; return; }
-    const rp = ensureRoutePlanner(); rp.points = points; rp.mode = 'land'; rp.blockedGates = getBlockedGateIds(); rp.path = []; rp.result = null;
+    if (!points) { if (!silent) refs.routeResult.innerHTML = '<span class="route-error">座標は x,y 形式で入力してください。</span>'; return; }
+    if (points.length < 2) { if (!silent) refs.routeResult.innerHTML = '<span class="route-error">経路点を2点以上指定してください。</span>'; return; }
+    if (points.some(p => p[0] < 0 || p[0] >= PK1_WIDTH || p[1] < 0 || p[1] >= PK1_HEIGHT)) { if (!silent) refs.routeResult.innerHTML = '<span class="route-error">PK1マップ範囲外の座標があります。</span>'; return; }
+    const rp = ensureRoutePlanner(); rp.points = points; rp.mode = 'land'; rp.blockedGates = getBlockedGateIds(); rp.path = []; rp.altPaths = []; rp.result = null;
     routeBusy = true; refs.routeCalculateBtn.disabled = true; refs.routeResult.textContent = '経路を探索中…'; refs.routeBadge.textContent = '探索中';
-    routeWorker.postMessage({ type:'route', points:rp.points, blockedGateIds:rp.blockedGates, gates:pk1Gates });
+    const routeCount = rp.showAlt3 ? 3 : (rp.showAlt2 ? 2 : 1);
+    routeWorker.postMessage({ type:'route', points:rp.points, blockedGateIds:rp.blockedGates, gates:pk1Gates, routeCount });
     requestRender();
   }
 
   function handleRouteWorkerMessage(event) {
     routeBusy = false; refs.routeCalculateBtn.disabled = false; refs.routeBadge.textContent = 'PK1';
     const r = event.data || {}; const rp = ensureRoutePlanner();
-    if (r.status !== 'ok') { rp.path = []; rp.result = { status:r.status || 'error' }; renderRouteResult(); requestRender(); return; }
-    rp.path = Array.from(r.path || []);
+    if (r.status !== 'ok') { rp.path = []; rp.altPaths = []; rp.result = { status:r.status || 'error' }; renderRouteResult(); requestRender(); return; }
+    const routes = Array.isArray(r.routes) ? r.routes : [];
+    const first = routes[0] || {};
+    rp.path = Array.from(first.path || []);
+    rp.altPaths = routes.slice(1,3).map(item => Array.from(item.path || []));
     const crossed = [];
     for (const g of pk1Gates) {
       const xmin=Number(g.xmin),xmax=Number(g.xmax),ymin=Number(g.ymin),ymax=Number(g.ymax);
       if (rp.path.some(idx => { const x=idx%PK1_WIDTH,y=Math.floor(idx/PK1_WIDTH); return x>=xmin&&x<=xmax&&y>=ymin&&y<=ymax; })) crossed.push(Number(g.id));
     }
-    rp.result = { status:'ok', totalSteps:Number(r.totalSteps), directSteps:Number(r.directSteps), expanded:Number(r.expanded||0), crossedGates:crossed };
+    rp.result = { status:'ok', totalSteps:Number(first.totalSteps || 0), crossedGates:crossed,
+      alternatives: routes.slice(1,3).map(item => ({ steps:Number(item.totalSteps || 0) })) };
     dirty = true; renderRouteResult(); requestRender();
   }
 
   function undoRoutePoint() {
-    const rp = ensureRoutePlanner(); if (!rp.points.length) return; rp.points.pop(); rp.path=[];rp.result=null;dirty=true;syncRouteUI();requestRender();
+    const rp = ensureRoutePlanner(); if (!rp.points.length) return; rp.points.pop(); rp.path=[];rp.altPaths=[];rp.result=null;dirty=true;syncRouteUI();requestRender();
   }
   function clearRoute() {
-    const rp = ensureRoutePlanner(); rp.points=[];rp.path=[];rp.result=null;dirty=true;syncRouteUI();requestRender();
+    const rp = ensureRoutePlanner(); rp.points=[];rp.path=[];rp.altPaths=[];rp.result=null;dirty=true;syncRouteUI();requestRender();
   }
 
   function getBlockedGateIds() {
@@ -1930,7 +2150,7 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
   }
   function setAllGateBlocks(value) {
     for (const cb of refs.gateBlockList.querySelectorAll('input[type="checkbox"]')) cb.checked = value;
-    const rp=ensureRoutePlanner();rp.blockedGates=getBlockedGateIds();rp.path=[];rp.result=null;dirty=true;renderRouteResult();requestRender();
+    const rp=ensureRoutePlanner();rp.blockedGates=getBlockedGateIds();rp.path=[];rp.altPaths=[];rp.result=null;dirty=true;renderRouteResult();requestRender();
   }
   function filterGateBlocks() {
     const q = refs.gateFilter.value.trim().toLowerCase();
@@ -1957,10 +2177,11 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     for (const g of pk1Gates) {
       const label=document.createElement('label'); label.className='gate-block-item'; label.dataset.label=`${g.name} ${g.province_names||''}`;
       const cb=document.createElement('input'); cb.type='checkbox'; cb.dataset.id=String(g.id); cb.checked=ensureRoutePlanner().blockedGates.includes(Number(g.id));
-      cb.addEventListener('change',()=>{ const rp=ensureRoutePlanner();rp.blockedGates=getBlockedGateIds();rp.path=[];rp.result=null;dirty=true;renderRouteResult();requestRender(); });
+      cb.addEventListener('change',()=>{ const rp=ensureRoutePlanner();rp.blockedGates=getBlockedGateIds();rp.path=[];rp.altPaths=[];rp.result=null;dirty=true;renderRouteResult();requestRender(); });
       const sp=document.createElement('span'); sp.textContent=`${g.name} (${Math.round(g.center_x)},${Math.round(g.center_y)})`;
       label.append(cb,sp); refs.gateBlockList.appendChild(label);
     }
+    filterGateBlocks();
   }
 
   function selectedPlace() {
@@ -1984,6 +2205,58 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     const rp=ensureRoutePlanner();rp.points.push([Math.round(Number(o.center_x)),Math.round(Number(o.center_y))]);rp.path=[];rp.result=null;dirty=true;syncRouteUI();requestRender();
   }
 
+  function hitPk1PlaceAtScreen(sx, sy) {
+    for (let i = pk1LabelHitBoxes.length - 1; i >= 0; i--) {
+      const b = pk1LabelHitBoxes[i];
+      if (sx >= b.l && sx <= b.r && sy >= b.t && sy <= b.b) return b.o;
+    }
+    let best = null, bestDist = 28;
+    const all = [...pk1Gates, ...pk1Cities];
+    for (const o of all) {
+      const w = gameToWorld(Number(o.center_x), Number(o.center_y)); if (!w) continue;
+      const px = w.x * view.scale + view.x, py = w.y * view.scale + view.y;
+      const d = Math.hypot(px - sx, py - sy);
+      if (d < bestDist) { best = o; bestDist = d; }
+    }
+    return best;
+  }
+
+  function onMapContextMenu(e) {
+    e.preventDefault();
+    const s = pointerScreen(e); const place = hitPk1PlaceAtScreen(s.x, s.y);
+    if (!place) { hidePlaceContextMenu(); return; }
+    contextPlace = place;
+    refs.placeContextTitle.textContent = `${place.name}  (${Math.round(place.center_x)},${Math.round(place.center_y)})`;
+    const isGate = place.kind === 'gate';
+    refs.placeContextGateBtn.hidden = !isGate;
+    if (isGate) {
+      const blocked = ensureRoutePlanner().blockedGates.includes(Number(place.id));
+      refs.placeContextGateBtn.textContent = blocked ? '通行可能に戻す' : 'この関所を通行不可';
+    }
+    const rect = refs.stageWrap.getBoundingClientRect();
+    refs.placeContextMenu.style.left = `${Math.min(rect.width - 210, Math.max(8, e.clientX - rect.left))}px`;
+    refs.placeContextMenu.style.top = `${Math.min(rect.height - 150, Math.max(8, e.clientY - rect.top))}px`;
+    refs.placeContextMenu.hidden = false;
+  }
+
+  function hidePlaceContextMenu() { if (refs.placeContextMenu) refs.placeContextMenu.hidden = true; contextPlace = null; }
+  function contextAddRoutePoint() {
+    if (!contextPlace) return; const rp=ensureRoutePlanner();
+    rp.points.push([Math.round(Number(contextPlace.center_x)),Math.round(Number(contextPlace.center_y))]); rp.path=[];rp.altPaths=[];rp.result=null;dirty=true;syncRouteUI();requestRender();hidePlaceContextMenu();
+  }
+  async function contextCopyCoordinate() {
+    if (!contextPlace) return; const text=`${Math.round(Number(contextPlace.center_x))},${Math.round(Number(contextPlace.center_y))}`;
+    try { await navigator.clipboard.writeText(text); showToast(`座標 ${text} をコピーしました`); }
+    catch (_) { const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();showToast(`座標 ${text} をコピーしました`); }
+    hidePlaceContextMenu();
+  }
+  function contextToggleGateBlock() {
+    if (!contextPlace || contextPlace.kind !== 'gate') return;
+    const id=Number(contextPlace.id), rp=ensureRoutePlanner(); const set=new Set(rp.blockedGates.map(Number));
+    if(set.has(id)) set.delete(id); else set.add(id); rp.blockedGates=[...set]; rp.path=[];rp.altPaths=[];rp.result=null; dirty=true;
+    populateGateBlockList(); syncRouteUI(); requestRender(); hidePlaceContextMenu();
+  }
+
   function drawPk1ReferenceLayers(context) {
     if (!backgroundImage || !project.calibration) return;
     const rp = ensureRoutePlanner();
@@ -1998,6 +2271,7 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     if (rp.showCities) for (const c of pk1Cities) drawMarker(c, '#7b201d', '#f3d7ca', 3.2);
     if (rp.showGates) for (const g of pk1Gates) drawMarker(g, '#f2a51a', '#5d3a00', 4.0);
 
+    pk1LabelHitBoxes = [];
     const labels = [];
     if (rp.showGateLabels) for (const g of pk1Gates) labels.push({ o: g, kind: 'gate', priority: 2000 + Number(g.level || 0) });
     if (rp.showCityLabels) for (const c of pk1Cities) labels.push({ o: c, kind: 'city', priority: 1000 + Number(c.level || 0) });
@@ -2030,6 +2304,7 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
       }
       if (!chosen) continue;
       placed.push(chosen);
+      pk1LabelHitBoxes.push({ o, l: chosen.l * view.scale + view.x, r: chosen.r * view.scale + view.x, t: chosen.t * view.scale + view.y, b: chosen.b * view.scale + view.y });
 
       const dist = Math.hypot(chosen.cx - anchor.x, chosen.cy - anchor.y);
       if (dist > 9 / view.scale) {
@@ -2048,12 +2323,19 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
     context.restore();
   }
 
+  function drawRoutePath(context, path, color, dash = []) {
+    if (!path || path.length < 2) return;
+    context.save(); context.strokeStyle=color; context.lineWidth=Math.max(1.25,3.2/view.scale);
+    context.lineJoin='round'; context.lineCap='round'; context.setLineDash(dash.map(v => v/view.scale)); context.beginPath();
+    for(let i=0;i<path.length;i++){ const idx=path[i],gx=idx%PK1_WIDTH+.5,gy=Math.floor(idx/PK1_WIDTH)+.5,w=gameToWorld(gx,gy); if(!w)continue; if(i)context.lineTo(w.x,w.y);else context.moveTo(w.x,w.y); }
+    context.stroke(); context.restore();
+  }
+
   function drawRouteOverlay(context) {
     const rp=ensureRoutePlanner();
-    if (rp.path && rp.path.length > 1) {
-      context.save();context.strokeStyle='#e43b2e';context.lineWidth=Math.max(1.25,3.2/view.scale);context.lineJoin='round';context.lineCap='round';context.beginPath();
-      for(let i=0;i<rp.path.length;i++){const idx=rp.path[i],gx=idx%PK1_WIDTH+.5,gy=Math.floor(idx/PK1_WIDTH)+.5,w=gameToWorld(gx,gy);if(!w)continue;if(i)context.lineTo(w.x,w.y);else context.moveTo(w.x,w.y);}context.stroke();context.restore();
-    }
+    drawRoutePath(context, rp.path, '#e43b2e');
+    if (rp.showAlt2 && rp.altPaths?.[0]) drawRoutePath(context, rp.altPaths[0], '#22b8cf', [8,5]);
+    if (rp.showAlt3 && rp.altPaths?.[1]) drawRoutePath(context, rp.altPaths[1], '#b86cff', [3,5]);
     if (rp.points) for(let i=0;i<rp.points.length;i++){const [gx,gy]=rp.points[i],w=gameToWorld(gx+.5,gy+.5);if(!w)continue;context.save();context.fillStyle=i===0?'#23b967':(i===rp.points.length-1?'#e13d36':'#ffd54d');context.strokeStyle='#fff';context.lineWidth=Math.max(1,1.4/view.scale);context.beginPath();context.arc(w.x,w.y,Math.max(3,5.8/view.scale),0,Math.PI*2);context.fill();context.stroke();if(view.scale>.55){context.fillStyle='#101216';context.font=`700 ${Math.max(8,11/view.scale)}px "Noto Sans JP",sans-serif`;context.textAlign='center';context.textBaseline='middle';context.fillText(String(i+1),w.x,w.y);}context.restore();}
   }
 
@@ -2075,11 +2357,11 @@ $('close').onclick=()=>$('info').classList.remove('show');$('fit').onclick=fit;$
       e.preventDefault(); deleteSelected();
     } else if (e.key.toLowerCase() === 'v') {
       setTool('select');
-    } else if (e.key.toLowerCase() === 'h') {
-      setTool('pan');
+
     } else if (e.key.toLowerCase() === 'r') {
       setTool('route');
     } else if (e.key === 'Escape') {
+      hidePlaceContextMenu();
       drawPreview = null;
       interaction = null;
       selectObject(null);
