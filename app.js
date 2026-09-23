@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 17;
+  const APP_VERSION = 18;
   const MAX_HISTORY = 80;
   const MIN_ZOOM = 0.03;
   const MAX_ZOOM = 12;
@@ -75,6 +75,9 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
 }catch(err){self.postMessage({type:'result',status:'error',message:String(err&&err.message||err)})}}
 `;
   const PK2_DISPLAY_TRANSFORM = { m00:1.2761893137143974, m01:-1.1086900344981845, m10:0.6801900753291124, m11:0.5251276563399424, tx:1815.506342488914, ty:-559.1567323436, im00:0.368696339593132, im01:0.7784201660829038, im10:-0.47756690772933746, im11:0.8960227535412332 };
+  const RESOURCE_ZONE_OVERLAY_SRC = 'resource_zones.png';
+  const RESOURCE_ZONES = [{"id":"north","name":"北側資源州","province_name":"筑後・日向","province_id":5,"label_x":1065.2,"label_y":1523.4,"cell_count":161146},{"id":"south","name":"南側資源州","province_name":"肥後・日向","province_id":6,"label_x":994.3,"label_y":1789.2,"cell_count":152590}];
+  const RESOURCE_ZONE_BOUNDARY_GATE_IDS = new Set([126,127,128,129,131,132,133,136,137,138,139,142,143]);
 
   const TYPE_META = {
     ally:     { name: '自軍',   label: '自軍部隊', color: '#2f80d0', size: 28, lineWidth: 3, symbol: '自' },
@@ -99,6 +102,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   let ctx;
   let project = createProject();
   let backgroundImage = null;
+  let resourceZoneOverlayImage = null;
   let view = { scale: 1, x: 0, y: 0 };
   let activeTool = 'select';
   let selectedId = null;
@@ -171,6 +175,9 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       console.error(error);
       showToast('PK2経路データを読み込めませんでした。ページを再読み込みしてください。', true);
     });
+    loadResourceZoneOverlay().catch(error => {
+      console.error(error);
+    });
   }
 
   function cacheRefs() {
@@ -191,7 +198,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       'placeSearch', 'placeSearchList', 'placeCenterBtn', 'placeAddBtn',
       'gateBlockClearBtn', 'gateBlockAllBtn', 'gateFilter', 'gateBlockList',
       'showGateMarkers', 'showCityMarkers', 'showGateLabels', 'showCityLabels', 'routeResult',
-      'showAltRoute2', 'showAltRoute3', 'allowSeaRoutes',
+      'showAltRoute2', 'showAltRoute3', 'allowSeaRoutes', 'showResourceZones',
       'placeContextMenu', 'placeContextTitle', 'placeContextRouteBtn', 'placeContextCopyBtn', 'placeContextGateBtn', 'placeContextDeleteBtn', 'placeContextBackdrop'
     ];
     for (const id of ids) refs[id] = document.getElementById(id);
@@ -278,6 +285,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     refs.showCityMarkers.addEventListener('change', routeDisplayChanged);
     refs.showGateLabels.addEventListener('change', routeDisplayChanged);
     refs.showCityLabels.addEventListener('change', routeDisplayChanged);
+    refs.showResourceZones.addEventListener('change', routeDisplayChanged);
     refs.showAltRoute2.addEventListener('change', alternateRouteChanged);
     refs.showAltRoute3.addEventListener('change', alternateRouteChanged);
     refs.allowSeaRoutes.addEventListener('change', routeSettingsChanged);
@@ -433,6 +441,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       drawBlankGrid(ctx, 1600, 1000);
     }
 
+    drawResourceZoneLayer(ctx);
     drawPk2ReferenceLayers(ctx);
     drawRouteOverlay(ctx);
 
@@ -2118,6 +2127,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       outCtx.translate(view.x, view.y);
       outCtx.scale(view.scale, view.scale);
       outCtx.drawImage(backgroundImage, 0, 0);
+      drawResourceZoneLayer(outCtx);
       drawPk2ReferenceLayers(outCtx);
       drawRouteOverlay(outCtx);
       for (const obj of project.objects) if (isObjectVisible(obj)) drawObject(outCtx, obj, false);
@@ -2154,6 +2164,12 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
         embed.getContext('2d').drawImage(backgroundImage, 0, 0);
         exportProject.background.dataUrl = embed.toDataURL('image/png');
       }
+      if (resourceZoneOverlayImage) {
+        const zoneEmbed = document.createElement('canvas');
+        zoneEmbed.width = resourceZoneOverlayImage.naturalWidth; zoneEmbed.height = resourceZoneOverlayImage.naturalHeight;
+        zoneEmbed.getContext('2d').drawImage(resourceZoneOverlayImage, 0, 0);
+        exportProject.resourceZoneOverlayDataUrl = zoneEmbed.toDataURL('image/png');
+      }
       const html = buildViewerHtml(exportProject);
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
       downloadBlob(blob, safeFilename(project.name) + '_共有用.html');
@@ -2181,7 +2197,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
 const project=${safeProject};
 const reference=${safeReference};
 const c=document.getElementById('c'),ctx=c.getContext('2d'),stage=document.getElementById('stage');
-let img=new Image(),view={s:1,x:0,y:0},drag=null,phase=project.exportPhaseFilter||'すべて';
+let img=new Image(),zoneImg=new Image(),zoneReady=false,view={s:1,x:0,y:0},drag=null,phase=project.exportPhaseFilter||'すべて';
 const T=project.background&&project.background.builtin?{m00:1.3811020352,m01:-1.1998330080000001,m10:0.7361070080000001,m11:0.568297248,tx:2225.7348256,ty:-536.8040288000001,im00:0.34068904150606916,im01:0.7192889969139248,im10:-0.44128946934724644,im11:0.8279581332661488}:null;
 const $=id=>document.getElementById(id);
 function gw(gx,gy){if(!T)return{x:gx,y:gy};return{x:T.m00*gx+T.m01*gy+T.tx,y:T.m10*gx+T.m11*gy+T.ty}}
@@ -2202,13 +2218,13 @@ else if(o.type==='arrow'&&l>1){ux=dx/l;uy=dy/l;let hd=Math.min(Math.max(s,(o.lin
 else if(o.type==='defense'&&l>1){ux=dx/l;uy=dy/l;px=-uy;py=ux;q.beginPath();q.moveTo(o.x,o.y);q.lineTo(o.x2,o.y2);q.stroke();let inter=Math.max(26,s*.72),n=Math.max(2,Math.floor(l/inter));q.lineWidth=Math.max(2,(o.lineWidth||4)*.72);q.beginPath();for(let i=0;i<=n;i++){let t=i/n,a=o.x+dx*t,b=o.y+dy*t,tick=s*.32;q.moveTo(a,b);q.lineTo(a+px*tick,b+py*tick)}q.stroke();label(q,o.label,(o.x+o.x2)/2+px*s*.58,(o.y+o.y2)/2+py*s*.58,ls)}
 else if(o.type==='area'){let a=Math.min(o.x,o.x2),b=Math.min(o.y,o.y2),w=Math.abs(dx),h=Math.abs(dy);q.globalAlpha*=.35;q.fillRect(a,b,w,h);q.globalAlpha=Math.max(.05,Math.min(1,o.opacity==null?1:o.opacity));q.setLineDash([s*.34,s*.2]);q.strokeRect(a,b,w,h);q.setLineDash([]);label(q,o.label,a+w/2,b+Math.max(s*.38,18),ls)}q.restore()}
 function routeLine(path,color,dash){dash=dash||[];if(!path||path.length<2)return;ctx.save();ctx.strokeStyle=color;ctx.lineWidth=Math.max(1.2,3.2/view.s);ctx.lineJoin='round';ctx.lineCap='round';ctx.setLineDash(dash.map(n=>n/view.s));ctx.beginPath();path.forEach((idx,i)=>{let gx=idx%2000+.5,gy=Math.floor(idx/2000)+.5,p=gw(gx,gy);if(i)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y)});ctx.stroke();ctx.restore()}
-function refs(){let rp=project.routePlanner||{},items=[];function marker(o,fill,stroke,rad){let p=gw(Number(o.center_x),Number(o.center_y)),r=Math.max(2.2,rad/view.s);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=stroke;ctx.lineWidth=Math.max(.7,1/view.s);ctx.stroke()}if(rp.showGates!==false)(reference.gates||[]).forEach(o=>marker(o,'#f2a51a','#5d3a00',4));if(rp.showCities===true)(reference.cities||[]).forEach(o=>marker(o,'#7b201d','#f3d7ca',3.2));if(rp.showGateLabels!==false)(reference.gates||[]).forEach(o=>items.push({o:o,kind:'gate',priority:2000+Number(o.level||0)}));if(rp.showCityLabels!==false)(reference.cities||[]).forEach(o=>items.push({o:o,kind:'city',priority:1000+Number(o.level||0)}));items.sort((a,b)=>b.priority-a.priority||Number(a.o.id)-Number(b.o.id));let placed=[],cand=[[0,-15],[0,15],[16,0],[-16,0],[15,-13],[-15,-13],[15,13],[-15,13],[0,-28],[0,28]];ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';for(let it of items){let p=gw(Number(it.o.center_x),Number(it.o.center_y)),fs=Math.max(8.5,11/view.s);ctx.font='700 '+fs+'px "Noto Sans JP",sans-serif';let tw=ctx.measureText(it.o.name).width,chosen=null;for(let d of cand){let cx=p.x+d[0]/view.s,cy=p.y+d[1]/view.s,box={l:cx-tw/2-3/view.s,r:cx+tw/2+3/view.s,t:cy-fs*.7,b:cy+fs*.7};if(!placed.some(z=>!(box.r<z.l||box.l>z.r||box.b<z.t||box.t>z.b))){chosen={cx:cx,cy:cy,box:box};break}}if(!chosen)continue;placed.push(chosen.box);ctx.lineJoin='round';ctx.strokeStyle='rgba(12,22,31,.96)';ctx.lineWidth=3.2/view.s;ctx.strokeText(it.o.name,chosen.cx,chosen.cy);ctx.fillStyle=it.kind==='gate'?'#ffd166':'#f8fbff';ctx.fillText(it.o.name,chosen.cx,chosen.cy)}ctx.restore()}
-function draw(){let d=c.d||1,w=c.clientWidth,h=c.clientHeight;ctx.setTransform(d,0,0,d,0,0);ctx.fillStyle='#0c0e11';ctx.fillRect(0,0,w,h);ctx.save();ctx.translate(view.x,view.y);ctx.scale(view.s,view.s);ctx.drawImage(img,0,0);refs();let rp=project.routePlanner||{};routeLine(rp.path,'#e43b2e');if(rp.showAlt2&&rp.altPaths&&rp.altPaths[0])routeLine(rp.altPaths[0],'#22b8cf',[8,5]);if(rp.showAlt3&&rp.altPaths&&rp.altPaths[1])routeLine(rp.altPaths[1],'#b86cff',[3,5]);if(rp.points)rp.points.forEach((p,i)=>{let q=gw(p[0]+.5,p[1]+.5);ctx.save();ctx.fillStyle=i===0?'#23b967':(i===rp.points.length-1?'#e13d36':'#ffd54d');ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(1,1.4/view.s);ctx.beginPath();ctx.arc(q.x,q.y,Math.max(3,5.8/view.s),0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore()});project.objects.forEach(o=>{if(visible(o))object(ctx,o)});ctx.restore();$('zoom').textContent=Math.round(view.s*100)+'%'}
+function refs(){let rp=project.routePlanner||{},items=[];function marker(o,fill,stroke,rad){let p=gw(Number(o.center_x),Number(o.center_y)),r=Math.max(2.2,rad/view.s);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=stroke;ctx.lineWidth=Math.max(.7,1/view.s);ctx.stroke()}if(rp.showGates!==false)(reference.gates||[]).forEach(o=>marker(o,'#f2a51a','#5d3a00',4));if(rp.showCities===true)(reference.cities||[]).forEach(o=>marker(o,'#7b201d','#f3d7ca',3.2));if(rp.showGateLabels!==false)(reference.gates||[]).forEach(o=>items.push({o:o,kind:'gate',priority:2000+Number(o.level||0)}));if(rp.showCityLabels!==false)(reference.cities||[]).forEach(o=>items.push({o:o,kind:'city',priority:1000+Number(o.level||0)}));items.sort((a,b)=>b.priority-a.priority||Number(a.o.id)-Number(b.o.id));let placed=[],cand=[[0,-15],[0,15],[16,0],[-16,0],[15,-13],[-15,-13],[15,13],[-15,13],[0,-28],[0,28]];ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';for(let it of items){let p=gw(Number(it.o.center_x),Number(it.o.center_y)),fs=Math.max(8.5,11/view.s),label=it.kind==='gate'&&Number(it.o.level)>0?it.o.name+' Lv.'+Number(it.o.level):it.o.name;ctx.font='700 '+fs+'px "Noto Sans JP",sans-serif';let tw=ctx.measureText(label).width,chosen=null;for(let d of cand){let cx=p.x+d[0]/view.s,cy=p.y+d[1]/view.s,box={l:cx-tw/2-3/view.s,r:cx+tw/2+3/view.s,t:cy-fs*.7,b:cy+fs*.7};if(!placed.some(z=>!(box.r<z.l||box.l>z.r||box.b<z.t||box.t>z.b))){chosen={cx:cx,cy:cy,box:box};break}}if(!chosen)continue;placed.push(chosen.box);ctx.lineJoin='round';ctx.strokeStyle='rgba(12,22,31,.96)';ctx.lineWidth=3.2/view.s;ctx.strokeText(label,chosen.cx,chosen.cy);ctx.fillStyle=it.kind==='gate'?'#ffd166':'#f8fbff';ctx.fillText(label,chosen.cx,chosen.cy)}ctx.restore()}
+function draw(){let d=c.d||1,w=c.clientWidth,h=c.clientHeight;ctx.setTransform(d,0,0,d,0,0);ctx.fillStyle='#0c0e11';ctx.fillRect(0,0,w,h);ctx.save();ctx.translate(view.x,view.y);ctx.scale(view.s,view.s);ctx.drawImage(img,0,0);if(zoneReady&&project.routePlanner&&project.routePlanner.showResourceZones)ctx.drawImage(zoneImg,0,0);refs();let rp=project.routePlanner||{};routeLine(rp.path,'#e43b2e');if(rp.showAlt2&&rp.altPaths&&rp.altPaths[0])routeLine(rp.altPaths[0],'#22b8cf',[8,5]);if(rp.showAlt3&&rp.altPaths&&rp.altPaths[1])routeLine(rp.altPaths[1],'#b86cff',[3,5]);if(rp.points)rp.points.forEach((p,i)=>{let q=gw(p[0]+.5,p[1]+.5);ctx.save();ctx.fillStyle=i===0?'#23b967':(i===rp.points.length-1?'#e13d36':'#ffd54d');ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(1,1.4/view.s);ctx.beginPath();ctx.arc(q.x,q.y,Math.max(3,5.8/view.s),0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore()});project.objects.forEach(o=>{if(visible(o))object(ctx,o)});ctx.restore();$('zoom').textContent=Math.round(view.s*100)+'%'}
 function resize(){let r=stage.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2.5);c.width=Math.max(1,Math.floor(r.width*d));c.height=Math.max(1,Math.floor(r.height*d));c.style.width=r.width+'px';c.style.height=r.height+'px';c.d=d}
 function fit(){let pad=28,s=Math.min((c.clientWidth-pad*2)/img.naturalWidth,(c.clientHeight-pad*2)/img.naturalHeight);view.s=Math.max(.03,s);view.x=(c.clientWidth-img.naturalWidth*view.s)/2;view.y=(c.clientHeight-img.naturalHeight*view.s)/2;draw()}
 function zoom(f,a,b){let wx=(a-view.x)/view.s,wy=(b-view.y)/view.s;view.s=Math.max(.03,Math.min(12,view.s*f));view.x=a-wx*view.s;view.y=b-wy*view.s;draw()}
 function pointer(e){let r=c.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
-img.onload=()=>{resize();fit();draw()};img.src=project.background.dataUrl||project.background.src;
+zoneImg.onload=()=>{zoneReady=true;draw()};if(project.resourceZoneOverlayDataUrl)zoneImg.src=project.resourceZoneOverlayDataUrl;img.onload=()=>{resize();fit();draw()};img.src=project.background.dataUrl||project.background.src;
 new ResizeObserver(()=>{resize();draw()}).observe(stage);
 let touches=new Map(),pinch=null;
 function startPinch(){let a=[...touches.entries()].slice(0,2);if(a.length<2)return;let p=a[0][1],q=a[1][1],mx=(p.x+q.x)/2,my=(p.y+q.y)/2;pinch={ids:[a[0][0],a[1][0]],dist:Math.max(1,Math.hypot(q.x-p.x,q.y-p.y)),scale:view.s,wx:(mx-view.x)/view.s,wy:(my-view.y)/view.s};drag=null}
@@ -2248,7 +2264,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
 
   function defaultRoutePlanner() {
     return { points: [], mode: 'land', blockedGates: [], showGates: true, showCities: false, showGateLabels: true, showCityLabels: true,
-      showAlt2: false, showAlt3: false, allowSea: true, path: [], altPaths: [], result: null };
+      showAlt2: false, showAlt3: false, allowSea: true, showResourceZones: false, path: [], altPaths: [], result: null };
   }
 
   function normalizeRoutePlanner(value) {
@@ -2263,7 +2279,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       showGates: value.showGates !== false, showCities: value.showCities === true,
       showGateLabels: value.showGateLabels !== false && value.showLabels !== false,
       showCityLabels: value.showCityLabels !== false && value.showLabels !== false,
-      showAlt2: value.showAlt2 === true, showAlt3: value.showAlt3 === true, allowSea: value.allowSea !== false,
+      showAlt2: value.showAlt2 === true, showAlt3: value.showAlt3 === true, allowSea: value.allowSea !== false, showResourceZones: value.showResourceZones === true,
       path, altPaths,
       result: value.result && typeof value.result === 'object' ? value.result : null
     };
@@ -2317,6 +2333,11 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       routeWorker.postMessage({ type: 'init', buffer: bits.buffer, stationRuns: stationRuns.buffer, seaRuns: seaRuns.buffer }, [bits.buffer, stationRuns.buffer, seaRuns.buffer]);
     }
     syncRouteUI();
+    requestRender();
+  }
+
+  async function loadResourceZoneOverlay() {
+    resourceZoneOverlayImage = await imageFromSource(RESOURCE_ZONE_OVERLAY_SRC);
     requestRender();
   }
 
@@ -2384,6 +2405,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     rp.showCities = refs.showCityMarkers.checked;
     rp.showGateLabels = refs.showGateLabels.checked;
     rp.showCityLabels = refs.showCityLabels.checked;
+    rp.showResourceZones = refs.showResourceZones.checked;
     dirty = true; requestRender();
   }
 
@@ -2396,6 +2418,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     refs.showCityMarkers.checked = rp.showCities;
     refs.showGateLabels.checked = rp.showGateLabels;
     refs.showCityLabels.checked = rp.showCityLabels;
+    refs.showResourceZones.checked = rp.showResourceZones === true;
     refs.showAltRoute2.checked = rp.showAlt2;
     refs.showAltRoute3.checked = rp.showAlt3;
     refs.allowSeaRoutes.checked = rp.allowSea !== false;
@@ -2417,8 +2440,8 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       const labels = { outside:'マップ範囲外です', start_blocked:'開始点が通行不可です', goal_blocked:'終点が通行不可です', no_path:'到達可能な経路がありません', max_expand:'探索上限に達しました', error:'経路計算エラー' };
       refs.routeResult.innerHTML = `<span class="route-error">${labels[r.status] || r.status}</span>`; return;
     }
-    const crossed = (r.crossedGates || []).map(id => pk2Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
-    const blocked = rp.blockedGates.map(id => pk2Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
+    const crossed = (r.crossedGates || []).map(id => { const g = pk2Gates.find(g => Number(g.id) === Number(id)); return g ? gateDisplayName(g) : `ID ${id}`; });
+    const blocked = rp.blockedGates.map(id => { const g = pk2Gates.find(g => Number(g.id) === Number(id)); return g ? gateDisplayName(g) : `ID ${id}`; });
     const alts = Array.isArray(r.alternatives) ? r.alternatives : [];
     let extra = '';
     if (rp.showAlt2) extra += alts[0]
@@ -2489,16 +2512,27 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     }
   }
 
+  function isGatePlace(o) {
+    return !!o && (o.kind === 'gate' || String(o.kind) === '2');
+  }
+
+  function gateDisplayName(g) {
+    const level = Number(g?.level);
+    return Number.isFinite(level) && level > 0 ? `${g.name} Lv.${level}` : String(g?.name || '');
+  }
+
   function populatePlaceSearch() {
     placeLookup = new Map(); refs.placeSearchList.textContent = '';
-    const add = obj => {
-      const label = String(obj.name);
+    const add = (obj, isGate) => {
+      const label = isGate ? gateDisplayName(obj) : String(obj.name);
       const op = document.createElement('option');
       op.value = label;
       refs.placeSearchList.appendChild(op);
       placeLookup.set(label, obj);
+      placeLookup.set(String(obj.name), obj);
     };
-    pk2Cities.forEach(add); pk2Gates.forEach(add);
+    pk2Cities.forEach(obj => add(obj, false));
+    pk2Gates.forEach(obj => add(obj, true));
   }
 
   function populateGateBlockList() {
@@ -2507,7 +2541,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       const label=document.createElement('label'); label.className='gate-block-item'; label.dataset.label=`${g.name} ${g.province_names||''}`;
       const cb=document.createElement('input'); cb.type='checkbox'; cb.dataset.id=String(g.id); cb.checked=ensureRoutePlanner().blockedGates.includes(Number(g.id));
       cb.addEventListener('change',()=>{ const rp=ensureRoutePlanner();rp.blockedGates=getBlockedGateIds();rp.path=[];rp.altPaths=[];rp.result=null;dirty=true;renderRouteResult();requestRender(); });
-      const sp=document.createElement('span'); sp.textContent=`${g.name} (${Math.round(g.center_x)},${Math.round(g.center_y)})`;
+      const sp=document.createElement('span'); sp.textContent=`${gateDisplayName(g)} (${Math.round(g.center_x)},${Math.round(g.center_y)})`;
       label.append(cb,sp); refs.gateBlockList.appendChild(label);
     }
     filterGateBlocks();
@@ -2603,8 +2637,8 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     refs.placeContextCopyBtn.hidden = false;
     refs.placeContextDeleteBtn.hidden = true;
     const gx = Math.round(Number(place.center_x)), gy = Math.round(Number(place.center_y));
-    refs.placeContextTitle.textContent = place.kind === 'point' ? `地点  (${gx},${gy})` : `${place.name}  (${gx},${gy})`;
-    const isGate = place.kind === 'gate';
+    refs.placeContextTitle.textContent = place.kind === 'point' ? `地点  (${gx},${gy})` : `${isGatePlace(place) ? gateDisplayName(place) : place.name}  (${gx},${gy})`;
+    const isGate = isGatePlace(place);
     refs.placeContextGateBtn.hidden = readOnly || !isGate;
     if (isGate && !readOnly) {
       const blocked = ensureRoutePlanner().blockedGates.includes(Number(place.id));
@@ -2636,7 +2670,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     hidePlaceContextMenu();
   }
   function contextToggleGateBlock() {
-    if (!contextPlace || contextPlace.kind !== 'gate' || isMobileReadOnly()) return;
+    if (!contextPlace || !isGatePlace(contextPlace) || isMobileReadOnly()) return;
     const id=Number(contextPlace.id), rp=ensureRoutePlanner(); const set=new Set(rp.blockedGates.map(Number));
     if(set.has(id)) set.delete(id); else set.add(id); rp.blockedGates=[...set]; rp.path=[];rp.altPaths=[];rp.result=null; dirty=true;
     populateGateBlockList(); syncRouteUI(); requestRender(); hidePlaceContextMenu();
@@ -2649,6 +2683,62 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     selectObject(obj.id);
     hidePlaceContextMenu();
     deleteSelected();
+  }
+
+  function drawResourceZoneLayer(context) {
+    const rp = ensureRoutePlanner();
+    if (!rp.showResourceZones || !backgroundImage || !project.background?.builtin) return;
+    if (resourceZoneOverlayImage) context.drawImage(resourceZoneOverlayImage, 0, 0);
+
+    context.save();
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    for (const zone of RESOURCE_ZONES) {
+      const anchor = gameToWorld(Number(zone.label_x), Number(zone.label_y));
+      if (!anchor) continue;
+      const title = zone.name;
+      const sub = zone.province_name;
+      const fs = Math.max(12 / view.scale, 13 / view.scale);
+      const subFs = Math.max(9.5 / view.scale, 10.5 / view.scale);
+      context.font = `800 ${fs}px "Noto Sans JP","Yu Gothic UI","Hiragino Sans","Meiryo",sans-serif`;
+      const titleW = context.measureText(title).width;
+      context.font = `700 ${subFs}px "Noto Sans JP","Yu Gothic UI","Hiragino Sans","Meiryo",sans-serif`;
+      const subW = context.measureText(sub).width;
+      const padX = 9 / view.scale, padY = 5 / view.scale;
+      const boxW = Math.max(titleW, subW) + padX * 2;
+      const boxH = fs + subFs + padY * 3;
+      const x = anchor.x - boxW / 2, y = anchor.y - boxH / 2;
+      context.fillStyle = 'rgba(8,16,24,.78)';
+      roundRect(context, x, y, boxW, boxH, 7 / view.scale);
+      context.fill();
+      context.strokeStyle = zone.id === 'north' ? 'rgba(74,201,245,.95)' : 'rgba(255,166,92,.95)';
+      context.lineWidth = Math.max(1.2 / view.scale, 1 / view.scale);
+      context.stroke();
+      context.font = `800 ${fs}px "Noto Sans JP","Yu Gothic UI","Hiragino Sans","Meiryo",sans-serif`;
+      context.fillStyle = '#fff';
+      context.fillText(title, anchor.x, anchor.y - subFs * .45);
+      context.font = `700 ${subFs}px "Noto Sans JP","Yu Gothic UI","Hiragino Sans","Meiryo",sans-serif`;
+      context.fillStyle = zone.id === 'north' ? '#74d9ff' : '#ffb77e';
+      context.fillText(sub, anchor.x, anchor.y + fs * .55);
+    }
+
+    for (const gate of pk2Gates) {
+      if (!RESOURCE_ZONE_BOUNDARY_GATE_IDS.has(Number(gate.id))) continue;
+      const p = gameToWorld(Number(gate.center_x), Number(gate.center_y));
+      if (!p) continue;
+      const r = Math.max(7 / view.scale, 5 / view.scale);
+      context.beginPath();
+      context.arc(p.x, p.y, r, 0, Math.PI * 2);
+      context.strokeStyle = '#fff3a6';
+      context.lineWidth = Math.max(2.4 / view.scale, 1.4 / view.scale);
+      context.stroke();
+      context.beginPath();
+      context.arc(p.x, p.y, r + 2.6 / view.scale, 0, Math.PI * 2);
+      context.strokeStyle = 'rgba(255,166,41,.9)';
+      context.lineWidth = Math.max(1.6 / view.scale, 1 / view.scale);
+      context.stroke();
+    }
+    context.restore();
   }
 
   function drawPk2ReferenceLayers(context) {
@@ -2684,9 +2774,10 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       if (!anchor || anchor.x < left - 100 / view.scale || anchor.x > right + 100 / view.scale || anchor.y < top - 100 / view.scale || anchor.y > bottom + 100 / view.scale) continue;
       const screenFont = item.kind === 'gate' ? 12.5 : 12;
       const fs = screenFont / view.scale;
+      const labelText = item.kind === 'gate' ? gateDisplayName(o) : o.name;
       context.font = `700 ${fs}px "Noto Sans JP","Yu Gothic UI","Hiragino Sans","Meiryo",sans-serif`;
       context.textAlign = 'center'; context.textBaseline = 'middle';
-      const tw = context.measureText(o.name).width;
+      const tw = context.measureText(labelText).width;
       const padX = 4.5 / view.scale, padY = 2 / view.scale;
       const w = tw + padX * 2, h = fs * 1.18 + padY * 2;
       let chosen = null;
@@ -2710,9 +2801,9 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       context.miterLimit = 2;
       context.strokeStyle = 'rgba(12,22,31,.96)';
       context.lineWidth = 3.2 / view.scale;
-      context.strokeText(o.name, chosen.cx, chosen.cy);
+      context.strokeText(labelText, chosen.cx, chosen.cy);
       context.fillStyle = item.kind === 'gate' ? '#ffd166' : '#f8fbff';
-      context.fillText(o.name, chosen.cx, chosen.cy);
+      context.fillText(labelText, chosen.cx, chosen.cy);
     }
     context.restore();
   }

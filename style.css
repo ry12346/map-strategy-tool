@@ -567,3 +567,13 @@ button { color: inherit; }
   .header-actions > .menu-wrap > #exportMenuBtn { width: 100%; }
   body.mobile-map-fullscreen #app { height: 100dvh; }
 }
+
+
+/* PK2 resource-state overlay */
+.resource-zone-toggle{margin-top:5px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
+.resource-zone-legend{display:grid;gap:4px;margin:6px 0 0 25px;padding:7px 9px;border:1px solid rgba(255,255,255,.08);border-radius:7px;background:rgba(10,14,19,.32);font-size:11px;line-height:1.35;color:#cbd3dd}
+.resource-zone-legend>span{display:flex;align-items:center;gap:7px}
+.resource-zone-legend small{color:#8f9baa;font-size:10px}
+.resource-zone-swatch{width:12px;height:12px;border-radius:3px;border:1px solid rgba(255,255,255,.75);box-shadow:0 0 0 1px rgba(0,0,0,.25);flex:none}
+.resource-zone-swatch.north{background:rgba(36,176,230,.72)}
+.resource-zone-swatch.south{background:rgba(255,139,61,.72)}
