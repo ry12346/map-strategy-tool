@@ -319,7 +319,7 @@ button { color: inherit; }
   .game-coordinate-label { display: none; }
 }
 
-/* PK1 route planner */
+/* PK2 route planner */
 #mapCanvas[data-tool="route"] { cursor: crosshair; }
 .route-section { background: linear-gradient(180deg, rgba(201,75,56,.045), transparent 120px); }
 .route-note { margin-bottom: 10px; }

@@ -15,7 +15,7 @@
         <div class="brand-mark" aria-hidden="true">戦</div>
         <div>
           <h1>真戦 戦略マップ</h1>
-          <p>PK1マップ・経路探索・作戦作成</p>
+          <p>PK2マップ・経路探索・作戦作成</p>
         </div>
       </div>
 
@@ -26,7 +26,7 @@
 
       <nav class="header-actions" aria-label="ファイル操作">
         <button id="newProjectBtn" class="button ghost" type="button">新規</button>
-        <button id="builtinMapBtn" class="button" type="button">PK1マップ</button>
+        <button id="builtinMapBtn" class="button" type="button">PK2マップ</button>
         <button id="saveProjectBtn" class="button" type="button">作戦保存</button>
         <button id="loadProjectBtn" class="button" type="button">作戦読込</button>
         <div class="menu-wrap">
@@ -89,9 +89,9 @@
         <div id="emptyState" class="empty-state">
           <div class="empty-card">
             <div class="empty-icon">地図</div>
-            <h2>PK1標準マップを読み込めませんでした</h2>
-            <p>PK1標準マップの読み込みに失敗しました。再読込をお試しください。</p>
-            <button id="emptyBuiltinMapBtn" class="button accent" type="button">PK1標準マップを再読込</button>
+            <h2>PK2標準マップを読み込めませんでした</h2>
+            <p>PK2標準マップの読み込みに失敗しました。再読込をお試しください。</p>
+            <button id="emptyBuiltinMapBtn" class="button accent" type="button">PK2標準マップを再読込</button>
           </div>
         </div>
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -215,13 +215,13 @@
         <section class="panel-section route-section" data-mobile-panel="route">
           <div class="section-heading">
             <h3>経路探索</h3>
-            <span id="routeBadge" class="count-badge">PK1</span>
+            <span id="routeBadge" class="count-badge">PK2</span>
           </div>
           <p class="muted route-note">左の「経路」を選んでマップをクリックすると経路点を追加できます。最短マス数を最優先し、同じ最短距離なら駅路をより多く通る経路を選びます。</p>
 
           <label class="route-field">
             <span>経路点（x,y / 1行1点）</span>
-            <textarea id="routePoints" rows="4" spellcheck="false" placeholder="618,1697&#10;669,1633&#10;726,1571"></textarea>
+            <textarea id="routePoints" rows="4" spellcheck="false" placeholder="1281,2025&#10;1253,2020"></textarea>
           </label>
           <div class="route-buttons">
             <button id="routeCalculateBtn" class="button accent" type="button">経路計算</button>
@@ -292,8 +292,8 @@
       </div>
       <div class="modal-body help-content">
         <section>
-          <h3>1. PK1標準マップ</h3>
-          <p>APK/EBDLから復元したPK1マップを内蔵しています。起動時に自動で読み込み、ゲーム座標も設定済みです。</p>
+          <h3>1. PK2標準マップ</h3>
+          <p>APK/EBDLから復元したPK2マップを内蔵しています。起動時に自動で読み込み、ゲーム座標も設定済みです。</p>
         </section>
         <section>
           <h3>2. 経路探索</h3>
@@ -346,7 +346,7 @@
         <button class="icon-button" value="cancel" aria-label="閉じる">×</button>
       </div>
       <div class="modal-body">
-        <p class="modal-note">PK1標準マップはゲーム座標が設定済みです。</p>
+        <p class="modal-note">PK2標準マップはゲーム座標が設定済みです。</p>
         <div class="coordinate-grid">
           <fieldset>
             <legend>画像の左上</legend>
@@ -370,7 +370,7 @@
     </form>
   </dialog>
 
-  <script src="pk1_embedded_data.js"></script>
+  <script src="pk2_embedded_data.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

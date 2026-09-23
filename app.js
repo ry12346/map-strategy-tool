@@ -1,21 +1,21 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 15;
+  const APP_VERSION = 16;
   const MAX_HISTORY = 80;
   const MIN_ZOOM = 0.03;
   const MAX_ZOOM = 12;
   const TOUCH_LONG_PRESS_MS = 550;
   const TOUCH_MOVE_CANCEL_PX = 10;
-  const PK1_WIDTH = 2000;
-  const PK1_HEIGHT = 3250;
-  const PK1_DISPLAY_WIDTH = 2595;
-  const PK1_DISPLAY_HEIGHT = 2134;
-  const PK1_BACKGROUND = { builtin: true, name: 'PK1標準マップ', type: 'image/png', src: 'map.png', width: PK1_DISPLAY_WIDTH, height: PK1_DISPLAY_HEIGHT };
-  const PK1_CALIBRATION = { topLeft: { x: 0, y: 0 }, bottomRight: { x: PK1_WIDTH, y: PK1_HEIGHT } };
+  const PK2_WIDTH = 2000;
+  const PK2_HEIGHT = 3250;
+  const PK2_DISPLAY_WIDTH = 2595;
+  const PK2_DISPLAY_HEIGHT = 2134;
+  const PK2_BACKGROUND = { builtin: true, name: 'PK2標準マップ', type: 'image/png', src: 'map.png', width: PK2_DISPLAY_WIDTH, height: PK2_DISPLAY_HEIGHT };
+  const PK2_CALIBRATION = { topLeft: { x: 0, y: 0 }, bottomRight: { x: PK2_WIDTH, y: PK2_HEIGHT } };
   const SCENARIO_KEYS = ['A', 'B', 'C'];
   const PHASES = ['共通', '第1段階', '第2段階', '第3段階', '予備'];
-  const PK1_ROUTE_WORKER_SOURCE = String.raw`
+  const PK2_ROUTE_WORKER_SOURCE = String.raw`
 const W=2000,H=3250,N=W*H;
 let bitset=null,stationBits=null;
 let gScore=new Uint32Array(N),roadScore=new Uint16Array(N),turnScore=new Uint16Array(N),seen=new Uint16Array(N),parentDir=new Uint8Array(N),generation=1;
@@ -71,7 +71,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   const transfers=routes.map(r=>r.path.buffer);self.postMessage({type:'result',status:'ok',routes},transfers)
 }catch(err){self.postMessage({type:'result',status:'error',message:String(err&&err.message||err)})}}
 `;
-  const PK1_DISPLAY_TRANSFORM = { m00:1.3811020352, m01:-1.1998330080000001, m10:0.7361070080000001, m11:0.568297248, tx:2225.7348256, ty:-536.8040288000001, im00:0.34068904150606916, im01:0.7192889969139248, im10:-0.44128946934724644, im11:0.8279581332661488 };
+  const PK2_DISPLAY_TRANSFORM = { m00:1.2761893137143974, m01:-1.1086900344981845, m10:0.6801900753291124, m11:0.5251276563399424, tx:1815.506342488914, ty:-559.1567323436, im00:0.368696339593132, im01:0.7784201660829038, im10:-0.47756690772933746, im11:0.8960227535412332 };
 
   const TYPE_META = {
     ally:     { name: '自軍',   label: '自軍部隊', color: '#2f80d0', size: 28, lineWidth: 3, symbol: '自' },
@@ -113,16 +113,16 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   let propertySnapshot = null;
   let toastTimer = null;
 
-  let pk1Cities = [];
-  let pk1Gates = [];
-  let pk1Regions = [];
-  let pk1Land = [];
+  let pk2Cities = [];
+  let pk2Gates = [];
+  let pk2Regions = [];
+  let pk2Land = [];
   let placeLookup = new Map();
   let routeWorker = null;
   let routeBusy = false;
   let contextPlace = null;
   let contextObjectId = null;
-  let pk1LabelHitBoxes = [];
+  let pk2LabelHitBoxes = [];
   const activeTouchPointers = new Map();
   let pinchGesture = null;
   let longPressState = null;
@@ -162,11 +162,11 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       console.error(error);
       backgroundImage = null;
       syncAllUI();
-      showToast('PK1標準マップを読み込めませんでした', true);
+      showToast('PK2標準マップを読み込めませんでした', true);
     });
-    loadPk1Assets().catch(error => {
+    loadPk2Assets().catch(error => {
       console.error(error);
-      showToast('PK1経路データを読み込めませんでした。ページを再読み込みしてください。', true);
+      showToast('PK2経路データを読み込めませんでした。ページを再読み込みしてください。', true);
     });
   }
 
@@ -353,8 +353,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       name: '新規作戦',
       createdAt: now,
       updatedAt: now,
-      background: { ...PK1_BACKGROUND },
-      calibration: JSON.parse(JSON.stringify(PK1_CALIBRATION)),
+      background: { ...PK2_BACKGROUND },
+      calibration: JSON.parse(JSON.stringify(PK2_CALIBRATION)),
       routePlanner: defaultRoutePlanner(),
       activeScenario: 'A',
       scenarios: {},
@@ -429,7 +429,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       drawBlankGrid(ctx, 1600, 1000);
     }
 
-    drawPk1ReferenceLayers(ctx);
+    drawPk2ReferenceLayers(ctx);
     drawRouteOverlay(ctx);
 
     for (const obj of project.objects) {
@@ -1248,8 +1248,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     if (interaction.mode === 'route-point-drag') {
       const game = worldToGame(world.x, world.y);
       if (!game) return;
-      const gx = Math.max(0, Math.min(PK1_WIDTH - 1, Math.round(game.x)));
-      const gy = Math.max(0, Math.min(PK1_HEIGHT - 1, Math.round(game.y)));
+      const gx = Math.max(0, Math.min(PK2_WIDTH - 1, Math.round(game.x)));
+      const gy = Math.max(0, Math.min(PK2_HEIGHT - 1, Math.round(game.y)));
       const rp = ensureRoutePlanner();
       const index = interaction.routePointIndex;
       if (index < 0 || index >= rp.points.length) return;
@@ -1336,7 +1336,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       const game = worldToGame(world.x, world.y);
       if (!game) { showToast('ゲーム座標が設定されていません', true); return; }
       const gx = Math.round(game.x), gy = Math.round(game.y);
-      if (gx < 0 || gx >= PK1_WIDTH || gy < 0 || gy >= PK1_HEIGHT) { showToast('PK1マップ範囲外です', true); return; }
+      if (gx < 0 || gx >= PK2_WIDTH || gy < 0 || gy >= PK2_HEIGHT) { showToast('PK2マップ範囲外です', true); return; }
       const rp = ensureRoutePlanner();
       rp.points.push([gx, gy]); rp.path = []; rp.altPaths = []; rp.result = null;
       dirty = true; syncRouteUI(); requestRender();
@@ -1926,8 +1926,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       name: String(data.name || '名称未設定'),
       createdAt: data.createdAt || new Date().toISOString(),
       updatedAt: data.updatedAt || new Date().toISOString(),
-      background: data.background || { ...PK1_BACKGROUND },
-      calibration: data.calibration || JSON.parse(JSON.stringify(PK1_CALIBRATION)),
+      background: data.background || { ...PK2_BACKGROUND },
+      calibration: data.calibration || JSON.parse(JSON.stringify(PK2_CALIBRATION)),
       routePlanner: normalizeRoutePlanner(data.routePlanner),
       activeScenario: SCENARIO_KEYS.includes(data.activeScenario) ? data.activeScenario : 'A',
       scenarios: {},
@@ -1959,14 +1959,14 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       backgroundImage = null;
       return;
     }
-    // Built-in PK1 maps always use the current bundled asset path. This also
+    // Built-in PK2 maps always use the current bundled asset path. This also
     // migrates older .nssmap files that stored data/map.png in background.src.
     const source = project.background.builtin
-      ? PK1_BACKGROUND.src
+      ? PK2_BACKGROUND.src
       : (project.background.dataUrl || project.background.src);
     if (!source) { backgroundImage = null; return; }
     backgroundImage = await imageFromSource(source);
-    if (project.background.builtin) project.background = { ...PK1_BACKGROUND };
+    if (project.background.builtin) project.background = { ...PK2_BACKGROUND };
     project.background.width = backgroundImage.naturalWidth;
     project.background.height = backgroundImage.naturalHeight;
   }
@@ -2002,7 +2002,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
 
   function worldToGame(x, y) {
     if (project.background?.builtin) {
-      const t = PK1_DISPLAY_TRANSFORM;
+      const t = PK2_DISPLAY_TRANSFORM;
       const dx = x - t.tx, dy = y - t.ty;
       return { x: t.im00 * dx + t.im01 * dy, y: t.im10 * dx + t.im11 * dy };
     }
@@ -2016,7 +2016,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
 
   function gameToWorld(x, y) {
     if (project.background?.builtin) {
-      const t = PK1_DISPLAY_TRANSFORM;
+      const t = PK2_DISPLAY_TRANSFORM;
       return { x: t.m00 * x + t.m01 * y + t.tx, y: t.m10 * x + t.m11 * y + t.ty };
     }
     const c = project.calibration;
@@ -2034,7 +2034,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
 
   function openCalibrationDialog() {
     if (project.background?.builtin) {
-      showToast('PK1標準マップはゲーム座標 0,0 ～ 2000,3250 で設定済みです');
+      showToast('PK2標準マップはゲーム座標 0,0 ～ 2000,3250 で設定済みです');
       return;
     }
     if (!project.background) {
@@ -2082,7 +2082,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   function updateCalibrationSummary() {
     const c = project.calibration;
     refs.calibrationSummary.textContent = project.background?.builtin
-      ? 'PK1標準：0,0 ～ 2000,3250（設定済み）'
+      ? 'PK2標準：0,0 ～ 2000,3250（設定済み）'
       : (c ? `左上 ${formatCoord(c.topLeft.x)},${formatCoord(c.topLeft.y)} ／ 右下 ${formatCoord(c.bottomRight.x)},${formatCoord(c.bottomRight.y)}` : '未設定');
   }
 
@@ -2114,7 +2114,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       outCtx.translate(view.x, view.y);
       outCtx.scale(view.scale, view.scale);
       outCtx.drawImage(backgroundImage, 0, 0);
-      drawPk1ReferenceLayers(outCtx);
+      drawPk2ReferenceLayers(outCtx);
       drawRouteOverlay(outCtx);
       for (const obj of project.objects) if (isObjectVisible(obj)) drawObject(outCtx, obj, false);
       outCtx.restore();
@@ -2160,8 +2160,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   function buildViewerHtml(data) {
     const safeProject = JSON.stringify(data).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
     const referenceData = {
-      cities: pk1Cities.map(o => ({ id:o.id, name:o.name, kind:'city', level:o.level, center_x:o.center_x, center_y:o.center_y })),
-      gates: pk1Gates.map(o => ({ id:o.id, name:o.name, kind:'gate', level:o.level, center_x:o.center_x, center_y:o.center_y }))
+      cities: pk2Cities.map(o => ({ id:o.id, name:o.name, kind:'city', level:o.level, center_x:o.center_x, center_y:o.center_y })),
+      gates: pk2Gates.map(o => ({ id:o.id, name:o.name, kind:'gate', level:o.level, center_x:o.center_x, center_y:o.center_y }))
     };
     const safeReference = JSON.stringify(referenceData).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
     return `<!DOCTYPE html>
@@ -2276,26 +2276,26 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     return out;
   }
 
-  async function loadPk1Assets() {
-    const embedded = window.PK1_EMBEDDED || null;
-    if (!embedded) throw new Error('PK1 embedded data is missing');
+  async function loadPk2Assets() {
+    const embedded = window.PK2_EMBEDDED || null;
+    if (!embedded) throw new Error('PK2 embedded data is missing');
 
-    pk1Cities = embedded.cities || [];
-    pk1Gates = embedded.gates || [];
-    pk1Regions = embedded.regions || [];
-    pk1Land = embedded.land || [];
+    pk2Cities = embedded.cities || [];
+    pk2Gates = embedded.gates || [];
+    pk2Regions = embedded.regions || [];
+    pk2Land = embedded.land || [];
     populatePlaceSearch();
     populateGateBlockList();
 
     if (!routeWorker) {
-      if (!embedded.passableLandB64) throw new Error('PK1 passable land data is missing');
-      const workerSource = PK1_ROUTE_WORKER_SOURCE;
+      if (!embedded.passableLandB64) throw new Error('PK2 passable land data is missing');
+      const workerSource = PK2_ROUTE_WORKER_SOURCE;
       const workerUrl = URL.createObjectURL(new Blob([workerSource], { type: 'text/javascript' }));
       routeWorker = new Worker(workerUrl);
       routeWorker.onmessage = event => {
         if (event.data && event.data.type === 'ready') {
           routeWorkerReady = true;
-          refs.routeBadge.textContent = 'PK1';
+          refs.routeBadge.textContent = 'PK2';
           return;
         }
         handleRouteWorkerMessage(event);
@@ -2319,16 +2319,16 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     const doLoad = async () => {
       const old = serializeProject();
       recordHistory(old);
-      project.background = { ...PK1_BACKGROUND };
-      project.calibration = JSON.parse(JSON.stringify(PK1_CALIBRATION));
+      project.background = { ...PK2_BACKGROUND };
+      project.calibration = JSON.parse(JSON.stringify(PK2_CALIBRATION));
       await loadBackgroundFromProject();
       dirty = true;
       syncAllUI();
       fitView();
-      showToast('PK1標準マップに切り替えました');
+      showToast('PK2標準マップに切り替えました');
     };
-    if (project.background && !project.background.builtin && !confirm('現在の背景画像をPK1標準マップへ戻します。配置済みの作戦記号は維持されます。続けますか？')) return;
-    doLoad().catch(err => { console.error(err); showToast('PK1標準マップを読み込めませんでした', true); });
+    if (project.background && !project.background.builtin && !confirm('現在の背景画像をPK2標準マップへ戻します。配置済みの作戦記号は維持されます。続けますか？')) return;
+    doLoad().catch(err => { console.error(err); showToast('PK2標準マップを読み込めませんでした', true); });
   }
 
   function routePointsFromText() {
@@ -2390,7 +2390,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     refs.showCityLabels.checked = rp.showCityLabels;
     refs.showAltRoute2.checked = rp.showAlt2;
     refs.showAltRoute3.checked = rp.showAlt3;
-    if (pk1Gates.length) {
+    if (pk2Gates.length) {
       for (const cb of refs.gateBlockList.querySelectorAll('input[type="checkbox"]')) cb.checked = rp.blockedGates.includes(Number(cb.dataset.id));
     }
     renderRouteResult();
@@ -2408,8 +2408,8 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       const labels = { outside:'マップ範囲外です', start_blocked:'開始点が通行不可です', goal_blocked:'終点が通行不可です', no_path:'到達可能な経路がありません', max_expand:'探索上限に達しました', error:'経路計算エラー' };
       refs.routeResult.innerHTML = `<span class="route-error">${labels[r.status] || r.status}</span>`; return;
     }
-    const crossed = (r.crossedGates || []).map(id => pk1Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
-    const blocked = rp.blockedGates.map(id => pk1Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
+    const crossed = (r.crossedGates || []).map(id => pk2Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
+    const blocked = rp.blockedGates.map(id => pk2Gates.find(g => Number(g.id) === Number(id))?.name || `ID ${id}`);
     const alts = Array.isArray(r.alternatives) ? r.alternatives : [];
     let extra = '';
     if (rp.showAlt2) extra += alts[0]
@@ -2427,7 +2427,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     const points = routePointsFromText();
     if (!points) { if (!silent) refs.routeResult.innerHTML = '<span class="route-error">座標は x,y 形式で入力してください。</span>'; return; }
     if (points.length < 2) { if (!silent) refs.routeResult.innerHTML = '<span class="route-error">経路点を2点以上指定してください。</span>'; return; }
-    if (points.some(p => p[0] < 0 || p[0] >= PK1_WIDTH || p[1] < 0 || p[1] >= PK1_HEIGHT)) { if (!silent) refs.routeResult.innerHTML = '<span class="route-error">PK1マップ範囲外の座標があります。</span>'; return; }
+    if (points.some(p => p[0] < 0 || p[0] >= PK2_WIDTH || p[1] < 0 || p[1] >= PK2_HEIGHT)) { if (!silent) refs.routeResult.innerHTML = '<span class="route-error">PK2マップ範囲外の座標があります。</span>'; return; }
     if (!routeWorker || !routeWorkerReady) {
       if (!silent) refs.routeResult.innerHTML = '<span class="route-error">経路データを初期化中です。1〜2秒後にもう一度お試しください。</span>';
       return;
@@ -2435,12 +2435,12 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     const rp = ensureRoutePlanner(); rp.points = points; rp.mode = 'land'; rp.blockedGates = getBlockedGateIds(); rp.path = []; rp.altPaths = []; rp.result = null;
     routeBusy = true; refs.routeCalculateBtn.disabled = true; refs.routeResult.textContent = '経路を探索中…'; refs.routeBadge.textContent = '探索中';
     const routeCount = rp.showAlt3 ? 3 : (rp.showAlt2 ? 2 : 1);
-    routeWorker.postMessage({ type:'route', points:rp.points, blockedGateIds:rp.blockedGates, gates:pk1Gates, routeCount });
+    routeWorker.postMessage({ type:'route', points:rp.points, blockedGateIds:rp.blockedGates, gates:pk2Gates, routeCount });
     requestRender();
   }
 
   function handleRouteWorkerMessage(event) {
-    routeBusy = false; refs.routeCalculateBtn.disabled = false; refs.routeBadge.textContent = 'PK1';
+    routeBusy = false; refs.routeCalculateBtn.disabled = false; refs.routeBadge.textContent = 'PK2';
     const r = event.data || {}; const rp = ensureRoutePlanner();
     if (r.status !== 'ok') { rp.path = []; rp.altPaths = []; rp.result = { status:r.status || 'error' }; renderRouteResult(); requestRender(); return; }
     const routes = Array.isArray(r.routes) ? r.routes : [];
@@ -2448,9 +2448,9 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     rp.path = Array.from(first.path || []);
     rp.altPaths = routes.slice(1,3).map(item => Array.from(item.path || []));
     const crossed = [];
-    for (const g of pk1Gates) {
+    for (const g of pk2Gates) {
       const xmin=Number(g.xmin),xmax=Number(g.xmax),ymin=Number(g.ymin),ymax=Number(g.ymax);
-      if (rp.path.some(idx => { const x=idx%PK1_WIDTH,y=Math.floor(idx/PK1_WIDTH); return x>=xmin&&x<=xmax&&y>=ymin&&y<=ymax; })) crossed.push(Number(g.id));
+      if (rp.path.some(idx => { const x=idx%PK2_WIDTH,y=Math.floor(idx/PK2_WIDTH); return x>=xmin&&x<=xmax&&y>=ymin&&y<=ymax; })) crossed.push(Number(g.id));
     }
     rp.result = { status:'ok', totalSteps:Number(first.totalSteps || 0), stationCells:Number(first.stationCells || 0), crossedGates:crossed,
       alternatives: routes.slice(1,3).map(item => ({ steps:Number(item.totalSteps || 0), stationCells:Number(item.stationCells || 0) })) };
@@ -2488,12 +2488,12 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       refs.placeSearchList.appendChild(op);
       placeLookup.set(label, obj);
     };
-    pk1Cities.forEach(add); pk1Gates.forEach(add);
+    pk2Cities.forEach(add); pk2Gates.forEach(add);
   }
 
   function populateGateBlockList() {
     refs.gateBlockList.textContent='';
-    for (const g of pk1Gates) {
+    for (const g of pk2Gates) {
       const label=document.createElement('label'); label.className='gate-block-item'; label.dataset.label=`${g.name} ${g.province_names||''}`;
       const cb=document.createElement('input'); cb.type='checkbox'; cb.dataset.id=String(g.id); cb.checked=ensureRoutePlanner().blockedGates.includes(Number(g.id));
       cb.addEventListener('change',()=>{ const rp=ensureRoutePlanner();rp.blockedGates=getBlockedGateIds();rp.path=[];rp.altPaths=[];rp.result=null;dirty=true;renderRouteResult();requestRender(); });
@@ -2508,7 +2508,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     if (!text) return null;
     if (placeLookup.has(text)) return placeLookup.get(text);
     const q = text.toLowerCase();
-    const all = [...pk1Cities, ...pk1Gates];
+    const all = [...pk2Cities, ...pk2Gates];
     const exact = all.find(o => String(o.name).toLowerCase() === q);
     if (exact) return exact;
     const partial = all.filter(o => String(o.name).toLowerCase().includes(q));
@@ -2524,13 +2524,13 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     const rp=ensureRoutePlanner();rp.points.push([Math.round(Number(o.center_x)),Math.round(Number(o.center_y))]);rp.path=[];rp.altPaths=[];rp.result=null;dirty=true;syncRouteUI();requestRender();
   }
 
-  function hitPk1PlaceAtScreen(sx, sy) {
-    for (let i = pk1LabelHitBoxes.length - 1; i >= 0; i--) {
-      const b = pk1LabelHitBoxes[i];
+  function hitPk2PlaceAtScreen(sx, sy) {
+    for (let i = pk2LabelHitBoxes.length - 1; i >= 0; i--) {
+      const b = pk2LabelHitBoxes[i];
       if (sx >= b.l && sx <= b.r && sy >= b.t && sy <= b.b) return b.o;
     }
     let best = null, bestDist = 28;
-    const all = [...pk1Gates, ...pk1Cities];
+    const all = [...pk2Gates, ...pk2Cities];
     for (const o of all) {
       const w = gameToWorld(Number(o.center_x), Number(o.center_y)); if (!w) continue;
       const px = w.x * view.scale + view.x, py = w.y * view.scale + view.y;
@@ -2541,13 +2541,13 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
   }
 
   function contextTargetAtScreen(sx, sy) {
-    const place = hitPk1PlaceAtScreen(sx, sy);
+    const place = hitPk2PlaceAtScreen(sx, sy);
     if (place) return place;
     const world = screenToWorld(sx, sy, true);
     const game = worldToGame(world.x, world.y);
     if (!game) return null;
     const gx = Math.round(game.x), gy = Math.round(game.y);
-    if (gx < 0 || gx >= PK1_WIDTH || gy < 0 || gy >= PK1_HEIGHT) return null;
+    if (gx < 0 || gx >= PK2_WIDTH || gy < 0 || gy >= PK2_HEIGHT) return null;
     return { id: null, name: '地点', kind: 'point', center_x: gx, center_y: gy };
   }
 
@@ -2641,7 +2641,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     deleteSelected();
   }
 
-  function drawPk1ReferenceLayers(context) {
+  function drawPk2ReferenceLayers(context) {
     if (!backgroundImage || !project.calibration) return;
     const rp = ensureRoutePlanner();
     const drawMarker = (o, fill, stroke, rScreen) => {
@@ -2652,13 +2652,13 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       context.fillStyle = fill; context.fill();
       context.strokeStyle = stroke; context.lineWidth = Math.max(.7, 1 / view.scale); context.stroke();
     };
-    if (rp.showCities) for (const c of pk1Cities) drawMarker(c, '#7b201d', '#f3d7ca', 3.2);
-    if (rp.showGates) for (const g of pk1Gates) drawMarker(g, '#f2a51a', '#5d3a00', 4.0);
+    if (rp.showCities) for (const c of pk2Cities) drawMarker(c, '#7b201d', '#f3d7ca', 3.2);
+    if (rp.showGates) for (const g of pk2Gates) drawMarker(g, '#f2a51a', '#5d3a00', 4.0);
 
-    pk1LabelHitBoxes = [];
+    pk2LabelHitBoxes = [];
     const labels = [];
-    if (rp.showGateLabels) for (const g of pk1Gates) labels.push({ o: g, kind: 'gate', priority: 2000 + Number(g.level || 0) });
-    if (rp.showCityLabels) for (const c of pk1Cities) labels.push({ o: c, kind: 'city', priority: 1000 + Number(c.level || 0) });
+    if (rp.showGateLabels) for (const g of pk2Gates) labels.push({ o: g, kind: 'gate', priority: 2000 + Number(g.level || 0) });
+    if (rp.showCityLabels) for (const c of pk2Cities) labels.push({ o: c, kind: 'city', priority: 1000 + Number(c.level || 0) });
     labels.sort((a, b) => b.priority - a.priority || Number(a.o.id) - Number(b.o.id));
 
     const placed = [];
@@ -2688,7 +2688,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       }
       if (!chosen) continue;
       placed.push(chosen);
-      pk1LabelHitBoxes.push({ o, l: chosen.l * view.scale + view.x, r: chosen.r * view.scale + view.x, t: chosen.t * view.scale + view.y, b: chosen.b * view.scale + view.y });
+      pk2LabelHitBoxes.push({ o, l: chosen.l * view.scale + view.x, r: chosen.r * view.scale + view.x, t: chosen.t * view.scale + view.y, b: chosen.b * view.scale + view.y });
 
       const dist = Math.hypot(chosen.cx - anchor.x, chosen.cy - anchor.y);
       if (dist > 9 / view.scale) {
@@ -2711,7 +2711,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     if (!path || path.length < 2) return;
     context.save(); context.strokeStyle=color; context.lineWidth=Math.max(1.25,3.2/view.scale);
     context.lineJoin='round'; context.lineCap='round'; context.setLineDash(dash.map(v => v/view.scale)); context.beginPath();
-    for(let i=0;i<path.length;i++){ const idx=path[i],gx=idx%PK1_WIDTH+.5,gy=Math.floor(idx/PK1_WIDTH)+.5,w=gameToWorld(gx,gy); if(!w)continue; if(i)context.lineTo(w.x,w.y);else context.moveTo(w.x,w.y); }
+    for(let i=0;i<path.length;i++){ const idx=path[i],gx=idx%PK2_WIDTH+.5,gy=Math.floor(idx/PK2_WIDTH)+.5,w=gameToWorld(gx,gy); if(!w)continue; if(i)context.lineTo(w.x,w.y);else context.moveTo(w.x,w.y); }
     context.stroke(); context.restore();
   }
 
