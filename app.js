@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 16;
+  const APP_VERSION = 17;
   const MAX_HISTORY = 80;
   const MIN_ZOOM = 0.03;
   const MAX_ZOOM = 12;
@@ -17,21 +17,23 @@
   const PHASES = ['共通', '第1段階', '第2段階', '第3段階', '予備'];
   const PK2_ROUTE_WORKER_SOURCE = String.raw`
 const W=2000,H=3250,N=W*H;
-let bitset=null,stationBits=null;
+let bitset=null,stationBits=null,seaBits=null;
 let gScore=new Uint32Array(N),roadScore=new Uint16Array(N),turnScore=new Uint16Array(N),seen=new Uint16Array(N),parentDir=new Uint8Array(N),generation=1;
 const dirs=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
 function bitOn(bits,i){return !!bits&&((bits[i>>3]>>(i&7))&1)!==0}
-function basePassable(i){return bitOn(bitset,i)}
+function basePassable(i,allowSea){return bitOn(bitset,i)||(allowSea&&bitOn(seaBits,i))}
 function isStationRoad(i){return bitOn(stationBits,i)}
+function isSeaRoute(i){return bitOn(seaBits,i)}
+function fillRuns(bits,runs){for(let k=0;k+1<runs.length;k+=2){const start=runs[k],len=runs[k+1];for(let i=start,end=Math.min(N,start+len);i<end;i++)bits[i>>3]|=1<<(i&7)}}
 function makeBlocked(gates,ids){const wanted=new Set((ids||[]).map(Number)),out=new Set();if(!wanted.size)return out;for(const g of gates){if(!wanted.has(Number(g.id)))continue;for(let y=Number(g.ymin);y<=Number(g.ymax);y++)for(let x=Number(g.xmin);x<=Number(g.xmax);x++)out.add(y*W+x)}return out}
 function heuristic(x,y,gx,gy){return Math.max(Math.abs(x-gx),Math.abs(y-gy))}
 function betterHeap(a,b){return a.f<b.f||(a.f===b.f&&(a.r>b.r||(a.r===b.r&&a.t<b.t)))}
 class Heap{constructor(){this.a=[]}get length(){return this.a.length}push(v){let p=this.a.length;this.a.push(v);while(p){const q=(p-1)>>1;if(betterHeap(this.a[q],v))break;this.a[p]=this.a[q];p=q}this.a[p]=v}pop(){const n=this.a.length;if(!n)return null;const out=this.a[0],last=this.a.pop();if(n>1){let p=0;while(true){let a=p*2+1;if(a>=n-1)break;let b=a+1,c=b<n-1&&betterHeap(this.a[b],this.a[a])?b:a;if(betterHeap(last,this.a[c]))break;this.a[p]=this.a[c];p=c}this.a[p]=last}return out}}
 function bump(){generation++;if(generation>=65535){seen.fill(0);generation=1}}
-function route(start,goal,blocked,maxExpand=3000000){
+function route(start,goal,blocked,maxExpand=3000000,allowSea=false){
   bump();const[sx,sy]=start,[gx,gy]=goal;
   if(sx<0||sx>=W||sy<0||sy>=H||gx<0||gx>=W||gy<0||gy>=H)return{status:'outside'};
-  const sidx=sy*W+sx,gidx=gy*W+gx,can=i=>basePassable(i)&&!blocked.has(i);
+  const sidx=sy*W+sx,gidx=gy*W+gx,can=i=>basePassable(i,allowSea)&&!blocked.has(i);
   if(!can(sidx))return{status:'start_blocked'};if(!can(gidx))return{status:'goal_blocked'};
   const heap=new Heap();seen[sidx]=generation;gScore[sidx]=0;roadScore[sidx]=isStationRoad(sidx)?1:0;turnScore[sidx]=0;parentDir[sidx]=0;
   heap.push({i:sidx,f:heuristic(sx,sy,gx,gy),g:0,r:roadScore[sidx],t:0});
@@ -56,17 +58,18 @@ function route(start,goal,blocked,maxExpand=3000000){
   if(seen[gidx]!==generation||gScore[gidx]===0xffffffff)return{status:'no_path',expanded};
   const rev=[gidx];let cur=gidx;
   while(cur!==sidx){const code=parentDir[cur]-1;if(code<0)return{status:'parent_error'};const[dx,dy]=dirs[code],x=cur%W,y=Math.floor(cur/W);cur=(y-dy)*W+(x-dx);rev.push(cur)}
-  rev.reverse();return{status:'ok',path:rev,steps:rev.length-1,stationCells:roadScore[gidx],turns:turnScore[gidx],expanded};
+  rev.reverse();let seaCells=0;if(allowSea)for(const idx of rev)if(isSeaRoute(idx))seaCells++;
+  return{status:'ok',path:rev,steps:rev.length-1,stationCells:roadScore[gidx],seaCells,turns:turnScore[gidx],expanded};
 }
-function routeAll(points,blocked,maxExpand){let total=0,station=0,turns=0,expanded=0,full=[],segments=[];for(let k=0;k<points.length-1;k++){const r=route(points[k],points[k+1],blocked,maxExpand);expanded+=r.expanded||0;segments.push({start:points[k],goal:points[k+1],status:r.status,steps:r.steps??null,stationCells:r.stationCells??null,expanded:r.expanded||0});if(r.status!=='ok')return{status:r.status,totalSteps:null,segments,expanded};total+=r.steps;station+=r.stationCells||0;turns+=r.turns||0;full=full.concat(k?r.path.slice(1):r.path)}return{status:'ok',totalSteps:total,stationCells:station,turns,segments,expanded,path:full}}
+function routeAll(points,blocked,maxExpand,allowSea=false){let total=0,station=0,sea=0,turns=0,expanded=0,full=[],segments=[];for(let k=0;k<points.length-1;k++){const r=route(points[k],points[k+1],blocked,maxExpand,allowSea);expanded+=r.expanded||0;segments.push({start:points[k],goal:points[k+1],status:r.status,steps:r.steps??null,stationCells:r.stationCells??null,seaCells:r.seaCells??null,expanded:r.expanded||0});if(r.status!=='ok')return{status:r.status,totalSteps:null,segments,expanded};total+=r.steps;station+=r.stationCells||0;sea+=r.seaCells||0;turns+=r.turns||0;full=full.concat(k?r.path.slice(1):r.path)}return{status:'ok',totalSteps:total,stationCells:station,seaCells:sea,turns,segments,expanded,path:full}}
 function requiredSet(points){const s=new Set();for(const p of points||[])s.add(Number(p[1])*W+Number(p[0]));return s}
 function blockRouteInterior(path,set,required){if(!path||path.length<3)return;for(let i=1;i<path.length-1;i++){const idx=path[i];if(!required.has(idx))set.add(idx)}}
 function blockDiversityWindow(path,set,required,ratio,windowSize=7){if(!path||path.length<5)return;const center=Math.max(1,Math.min(path.length-2,Math.floor((path.length-1)*ratio))),half=Math.floor(windowSize/2);for(let i=Math.max(1,center-half);i<=Math.min(path.length-2,center+half);i++){const idx=path[i];if(!required.has(idx))set.add(idx)}}
-function pack(r){return{totalSteps:r.totalSteps,stationCells:r.stationCells,turns:r.turns,expanded:r.expanded,path:new Uint32Array(r.path)}}
-self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.buffer);stationBits=new Uint8Array(Math.ceil(N/8));const runs=m.stationRuns?new Uint32Array(m.stationRuns):new Uint32Array(0);for(let k=0;k+1<runs.length;k+=2){const start=runs[k],len=runs[k+1];for(let i=start,end=Math.min(N,start+len);i<end;i++)stationBits[i>>3]|=1<<(i&7)}self.postMessage({type:'ready'});return}if(m.type!=='route')return;try{
-  if(!bitset)throw new Error('route data not initialized');const gateBlocked=makeBlocked(m.gates||[],m.blockedGateIds||[]),pts=m.points||[],routeCount=Math.max(1,Math.min(3,Number(m.routeCount)||1)),routes=[];
-  const r1=routeAll(pts,gateBlocked,m.maxExpand||3000000);if(r1.status!=='ok'){self.postMessage({type:'result',status:r1.status});return}routes.push(pack(r1));
-  if(routeCount>=2){const req=requiredSet(pts),avoid1=new Set(gateBlocked);blockRouteInterior(r1.path,avoid1,req);const r2=routeAll(pts,avoid1,m.maxExpand||3000000);if(r2.status==='ok'){routes.push(pack(r2));if(routeCount>=3){let r3=null;for(const ratio of [.5,.34,.66,.25,.75]){const avoid3=new Set(avoid1);blockDiversityWindow(r2.path,avoid3,req,ratio,7);const trial=routeAll(pts,avoid3,m.maxExpand||3000000);if(trial.status==='ok'){r3=trial;break}}if(r3)routes.push(pack(r3))}}
+function pack(r){return{totalSteps:r.totalSteps,stationCells:r.stationCells,seaCells:r.seaCells||0,turns:r.turns,expanded:r.expanded,path:new Uint32Array(r.path)}}
+self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.buffer);stationBits=new Uint8Array(Math.ceil(N/8));seaBits=new Uint8Array(Math.ceil(N/8));const runs=m.stationRuns?new Uint32Array(m.stationRuns):new Uint32Array(0);fillRuns(stationBits,runs);const seaRuns=m.seaRuns?new Uint32Array(m.seaRuns):new Uint32Array(0);fillRuns(seaBits,seaRuns);self.postMessage({type:'ready'});return}if(m.type!=='route')return;try{
+  if(!bitset)throw new Error('route data not initialized');const gateBlocked=makeBlocked(m.gates||[],m.blockedGateIds||[]),pts=m.points||[],routeCount=Math.max(1,Math.min(3,Number(m.routeCount)||1)),allowSea=m.allowSea!==false,routes=[];
+  const r1=routeAll(pts,gateBlocked,m.maxExpand||3000000,allowSea);if(r1.status!=='ok'){self.postMessage({type:'result',status:r1.status});return}routes.push(pack(r1));
+  if(routeCount>=2){const req=requiredSet(pts),avoid1=new Set(gateBlocked);blockRouteInterior(r1.path,avoid1,req);const r2=routeAll(pts,avoid1,m.maxExpand||3000000,allowSea);if(r2.status==='ok'){routes.push(pack(r2));if(routeCount>=3){let r3=null;for(const ratio of [.5,.34,.66,.25,.75]){const avoid3=new Set(avoid1);blockDiversityWindow(r2.path,avoid3,req,ratio,7);const trial=routeAll(pts,avoid3,m.maxExpand||3000000,allowSea);if(trial.status==='ok'){r3=trial;break}}if(r3)routes.push(pack(r3))}}
   }
   const transfers=routes.map(r=>r.path.buffer);self.postMessage({type:'result',status:'ok',routes},transfers)
 }catch(err){self.postMessage({type:'result',status:'error',message:String(err&&err.message||err)})}}
@@ -188,7 +191,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       'placeSearch', 'placeSearchList', 'placeCenterBtn', 'placeAddBtn',
       'gateBlockClearBtn', 'gateBlockAllBtn', 'gateFilter', 'gateBlockList',
       'showGateMarkers', 'showCityMarkers', 'showGateLabels', 'showCityLabels', 'routeResult',
-      'showAltRoute2', 'showAltRoute3',
+      'showAltRoute2', 'showAltRoute3', 'allowSeaRoutes',
       'placeContextMenu', 'placeContextTitle', 'placeContextRouteBtn', 'placeContextCopyBtn', 'placeContextGateBtn', 'placeContextDeleteBtn', 'placeContextBackdrop'
     ];
     for (const id of ids) refs[id] = document.getElementById(id);
@@ -277,6 +280,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     refs.showCityLabels.addEventListener('change', routeDisplayChanged);
     refs.showAltRoute2.addEventListener('change', alternateRouteChanged);
     refs.showAltRoute3.addEventListener('change', alternateRouteChanged);
+    refs.allowSeaRoutes.addEventListener('change', routeSettingsChanged);
     refs.scenarioButtons.forEach(btn => btn.addEventListener('click', () => switchScenario(btn.dataset.scenario)));
     refs.placeContextRouteBtn.addEventListener('click', contextAddRoutePoint);
     refs.placeContextCopyBtn.addEventListener('click', contextCopyCoordinate);
@@ -2244,7 +2248,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
 
   function defaultRoutePlanner() {
     return { points: [], mode: 'land', blockedGates: [], showGates: true, showCities: false, showGateLabels: true, showCityLabels: true,
-      showAlt2: false, showAlt3: false, path: [], altPaths: [], result: null };
+      showAlt2: false, showAlt3: false, allowSea: true, path: [], altPaths: [], result: null };
   }
 
   function normalizeRoutePlanner(value) {
@@ -2259,7 +2263,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       showGates: value.showGates !== false, showCities: value.showCities === true,
       showGateLabels: value.showGateLabels !== false && value.showLabels !== false,
       showCityLabels: value.showCityLabels !== false && value.showLabels !== false,
-      showAlt2: value.showAlt2 === true, showAlt3: value.showAlt3 === true,
+      showAlt2: value.showAlt2 === true, showAlt3: value.showAlt3 === true, allowSea: value.allowSea !== false,
       path, altPaths,
       result: value.result && typeof value.result === 'object' ? value.result : null
     };
@@ -2309,7 +2313,8 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       };
       const bits = decodeBase64Bytes(embedded.passableLandB64);
       const stationRuns = new Uint32Array(Array.isArray(embedded.stationRoadRuns) ? embedded.stationRoadRuns : []);
-      routeWorker.postMessage({ type: 'init', buffer: bits.buffer, stationRuns: stationRuns.buffer }, [bits.buffer, stationRuns.buffer]);
+      const seaRuns = new Uint32Array(Array.isArray(embedded.seaRouteRuns) ? embedded.seaRouteRuns : []);
+      routeWorker.postMessage({ type: 'init', buffer: bits.buffer, stationRuns: stationRuns.buffer, seaRuns: seaRuns.buffer }, [bits.buffer, stationRuns.buffer, seaRuns.buffer]);
     }
     syncRouteUI();
     requestRender();
@@ -2363,11 +2368,14 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
   function routeSettingsChanged() {
     const rp = ensureRoutePlanner();
     rp.mode = 'land';
+    rp.allowSea = refs.allowSeaRoutes.checked;
     rp.showGates = refs.showGateMarkers.checked;
     rp.showCities = refs.showCityMarkers.checked;
     rp.showGateLabels = refs.showGateLabels.checked;
     rp.showCityLabels = refs.showCityLabels.checked;
-    rp.path = []; rp.altPaths = []; rp.result = null; dirty = true; requestRender();
+    rp.path = []; rp.altPaths = []; rp.result = null; dirty = true;
+    if (rp.points.length >= 2 && routeWorkerReady) calculateRoute(true);
+    else { renderRouteResult(); requestRender(); }
   }
 
   function routeDisplayChanged() {
@@ -2390,6 +2398,7 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     refs.showCityLabels.checked = rp.showCityLabels;
     refs.showAltRoute2.checked = rp.showAlt2;
     refs.showAltRoute3.checked = rp.showAlt3;
+    refs.allowSeaRoutes.checked = rp.allowSea !== false;
     if (pk2Gates.length) {
       for (const cb of refs.gateBlockList.querySelectorAll('input[type="checkbox"]')) cb.checked = rp.blockedGates.includes(Number(cb.dataset.id));
     }
@@ -2413,12 +2422,13 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
     const alts = Array.isArray(r.alternatives) ? r.alternatives : [];
     let extra = '';
     if (rp.showAlt2) extra += alts[0]
-      ? `<div class="route-alt-summary alt2">候補2 ${alts[0].steps} マス</div>`
+      ? `<div class="route-alt-summary alt2">候補2 ${alts[0].steps} マス${alts[0].seaCells ? `（海上 ${alts[0].seaCells}）` : ''}</div>`
       : '<div class="route-alt-summary alt2 unavailable">候補2：経路1と重ならない経路なし</div>';
     if (rp.showAlt3) extra += alts[1]
-      ? `<div class="route-alt-summary alt3">候補3 ${alts[1].steps} マス</div>`
+      ? `<div class="route-alt-summary alt3">候補3 ${alts[1].steps} マス${alts[1].seaCells ? `（海上 ${alts[1].seaCells}）` : ''}</div>`
       : '<div class="route-alt-summary alt3 unavailable">候補3：経路1と重ならない経路なし</div>';
     refs.routeResult.innerHTML = `<div class="route-ok">最短 ${r.totalSteps} マス</div>${extra}<table>` +
+      `<tr><td>海上航路</td><td>${rp.allowSea === false ? '使用しない' : (r.seaCells ? `${r.seaCells} マス` : '未使用')}</td></tr>` +
       `<tr><td>通過関所</td><td>${crossed.length ? crossed.join('、') : '-'}</td></tr>` +
       `<tr><td>遮断関所</td><td>${blocked.length ? blocked.join('、') : '-'}</td></tr></table>`;
   }
@@ -2432,10 +2442,10 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       if (!silent) refs.routeResult.innerHTML = '<span class="route-error">経路データを初期化中です。1〜2秒後にもう一度お試しください。</span>';
       return;
     }
-    const rp = ensureRoutePlanner(); rp.points = points; rp.mode = 'land'; rp.blockedGates = getBlockedGateIds(); rp.path = []; rp.altPaths = []; rp.result = null;
+    const rp = ensureRoutePlanner(); rp.points = points; rp.mode = 'land'; rp.allowSea = refs.allowSeaRoutes.checked; rp.blockedGates = getBlockedGateIds(); rp.path = []; rp.altPaths = []; rp.result = null;
     routeBusy = true; refs.routeCalculateBtn.disabled = true; refs.routeResult.textContent = '経路を探索中…'; refs.routeBadge.textContent = '探索中';
     const routeCount = rp.showAlt3 ? 3 : (rp.showAlt2 ? 2 : 1);
-    routeWorker.postMessage({ type:'route', points:rp.points, blockedGateIds:rp.blockedGates, gates:pk2Gates, routeCount });
+    routeWorker.postMessage({ type:'route', points:rp.points, blockedGateIds:rp.blockedGates, gates:pk2Gates, routeCount, allowSea:rp.allowSea !== false });
     requestRender();
   }
 
@@ -2452,8 +2462,8 @@ $('fit').onclick=fit;$('zin').onclick=()=>zoom(1.25,c.clientWidth/2,c.clientHeig
       const xmin=Number(g.xmin),xmax=Number(g.xmax),ymin=Number(g.ymin),ymax=Number(g.ymax);
       if (rp.path.some(idx => { const x=idx%PK2_WIDTH,y=Math.floor(idx/PK2_WIDTH); return x>=xmin&&x<=xmax&&y>=ymin&&y<=ymax; })) crossed.push(Number(g.id));
     }
-    rp.result = { status:'ok', totalSteps:Number(first.totalSteps || 0), stationCells:Number(first.stationCells || 0), crossedGates:crossed,
-      alternatives: routes.slice(1,3).map(item => ({ steps:Number(item.totalSteps || 0), stationCells:Number(item.stationCells || 0) })) };
+    rp.result = { status:'ok', totalSteps:Number(first.totalSteps || 0), stationCells:Number(first.stationCells || 0), seaCells:Number(first.seaCells || 0), crossedGates:crossed,
+      alternatives: routes.slice(1,3).map(item => ({ steps:Number(item.totalSteps || 0), stationCells:Number(item.stationCells || 0), seaCells:Number(item.seaCells || 0) })) };
     dirty = true; renderRouteResult(); requestRender();
   }
 
