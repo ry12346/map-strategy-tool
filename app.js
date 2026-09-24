@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 20;
+  const APP_VERSION = 21;
   const PK2_WIDTH = 2000;
   const PK2_HEIGHT = 3250;
   const PK2_DISPLAY_WIDTH = 2595;
@@ -64,11 +64,11 @@ function blockDiversityWindow(path,set,required,ratio,windowSize=7){if(!path||pa
 function pack(r){return{totalSteps:r.totalSteps,stationCells:r.stationCells,seaCells:r.seaCells||0,turns:r.turns,expanded:r.expanded,path:new Uint32Array(r.path)}}
 self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.buffer);stationBits=new Uint8Array(Math.ceil(N/8));seaBits=new Uint8Array(Math.ceil(N/8));const runs=m.stationRuns?new Uint32Array(m.stationRuns):new Uint32Array(0);fillRuns(stationBits,runs);const seaRuns=m.seaRuns?new Uint32Array(m.seaRuns):new Uint32Array(0);fillRuns(seaBits,seaRuns);self.postMessage({type:'ready'});return}if(m.type!=='route')return;try{
   if(!bitset)throw new Error('route data not initialized');const gateBlocked=makeBlocked(m.gates||[],m.blockedGateIds||[]),pts=m.points||[],routeCount=Math.max(1,Math.min(3,Number(m.routeCount)||1)),allowSea=m.allowSea!==false,routes=[];
-  const r1=routeAll(pts,gateBlocked,m.maxExpand||3000000,allowSea);if(r1.status!=='ok'){self.postMessage({type:'result',status:r1.status});return}routes.push(pack(r1));
+  const r1=routeAll(pts,gateBlocked,m.maxExpand||3000000,allowSea);if(r1.status!=='ok'){self.postMessage({type:'result',requestId:m.requestId,status:r1.status});return}routes.push(pack(r1));
   if(routeCount>=2){const req=requiredSet(pts),avoid1=new Set(gateBlocked);blockRouteInterior(r1.path,avoid1,req);const r2=routeAll(pts,avoid1,m.maxExpand||3000000,allowSea);if(r2.status==='ok'){routes.push(pack(r2));if(routeCount>=3){let r3=null;for(const ratio of [.5,.34,.66,.25,.75]){const avoid3=new Set(avoid1);blockDiversityWindow(r2.path,avoid3,req,ratio,7);const trial=routeAll(pts,avoid3,m.maxExpand||3000000,allowSea);if(trial.status==='ok'){r3=trial;break}}if(r3)routes.push(pack(r3))}}
   }
-  const transfers=routes.map(r=>r.path.buffer);self.postMessage({type:'result',status:'ok',routes},transfers)
-}catch(err){self.postMessage({type:'result',status:'error',message:String(err&&err.message||err)})}}
+  const transfers=routes.map(r=>r.path.buffer);self.postMessage({type:'result',requestId:m.requestId,status:'ok',routes},transfers)
+}catch(err){self.postMessage({type:'result',requestId:m.requestId,status:'error',message:String(err&&err.message||err)})}}
 `;
 
   const $ = id => document.getElementById(id);
@@ -124,6 +124,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   let routeWorkerReady = false;
   let routeBusy = false;
   let requestSeq = 0;
+  let activeRouteRequestId = 0;
   let selectedPlace = null;
   let routeAddMode = false;
   let pendingAutoRoute = false;
@@ -338,7 +339,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       if(!lastGamePosition)return;
       const [x,y]=lastGamePosition;
       if(!isPassableGamePoint(x,y)){showToast('この地点は通行できません',true);return;}
-      state.routePoints.push([x,y]);clearRouteResult();saveState();syncRouteUi();requestRender();showToast(`経路点 ${state.routePoints.length} を追加しました`);return;
+      if(state.routeGoalSet&&state.routePoints.length>=2)state.routePoints.splice(state.routePoints.length-1,0,[x,y]);else state.routePoints.push([x,y]);
+      afterRoutePointEdit(state.routePoints.length>=2);showToast(`経路点 ${state.routePoints.length} を追加しました`);return;
     }
     const place=nearestPlaceAtClient(cx,cy);
     if(place){openPlaceSheet(place);return;}
@@ -416,8 +418,17 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     else state.routePoints.push(p);
     closeSheets();afterRoutePointEdit(true);
   }
+  function cancelPendingRouteCalculation() {
+    pendingAutoRoute=false;
+    activeRouteRequestId=++requestSeq;
+    routeBusy=false;
+    refs.calculateRoute.disabled=false;
+    refs.calculateRoute.textContent='経路を表示';
+  }
   function afterRoutePointEdit(autoRoute=false) {
-    clearRouteResult();saveState();syncRouteUi();requestRender();if(autoRoute)autoCalculateRoute();
+    clearRouteResult();saveState();syncRouteUi();requestRender();
+    if(autoRoute&&state.routePoints.length>=2)autoCalculateRoute();
+    else cancelPendingRouteCalculation();
   }
   function clearRouteResult() {state.routePath=[];state.altPaths=[];state.routeResult=null;state.showAlternates=false;}
 
@@ -475,9 +486,11 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   function calculateRoute(routeCount=1) {
     if(routeBusy)return;if(state.routePoints.length<2){showToast('開始地点と到着地点を指定してください',true);return;}if(!routeWorkerReady){showToast('経路データを準備中です',true);return;}
     routeBusy=true;refs.calculateRoute.disabled=true;refs.calculateRoute.textContent='探索中…';refs.routeResult.innerHTML='<p>経路を探索中…</p>';state.showAlternates=routeCount>1;
-    routeWorker.postMessage({type:'route',requestId:++requestSeq,points:state.routePoints,blockedGateIds:state.blockedGates,gates,routeCount,allowSea:true,maxExpand:3000000});
+    const requestId=++requestSeq;activeRouteRequestId=requestId;
+    routeWorker.postMessage({type:'route',requestId,points:state.routePoints,blockedGateIds:state.blockedGates,gates,routeCount,allowSea:true,maxExpand:3000000});
   }
   function handleRouteResult(m) {
+    if(Number(m.requestId||0)!==activeRouteRequestId)return;
     routeBusy=false;refs.calculateRoute.disabled=false;refs.calculateRoute.textContent='経路を表示';
     if(pendingAutoRoute){pendingAutoRoute=false;calculateRoute(1);return;}
     if(m.status!=='ok'){state.routePath=[];state.altPaths=[];state.routeResult={status:m.status||'error'};renderRouteResult();requestRender();return;}
@@ -533,8 +546,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     document.addEventListener('pointerdown',e=>{if(!e.target.closest('.search-panel'))refs.searchResults.hidden=true;},true);
     refs.toggleCity.addEventListener('click',()=>toggleDisplay('showCityNames',refs.toggleCity));refs.toggleGate.addEventListener('click',()=>toggleDisplay('showGateNames',refs.toggleGate));refs.toggleResource.addEventListener('click',()=>toggleDisplay('showResourceZones',refs.toggleResource));
     refs.sheetBackdrop.addEventListener('click',()=>closeSheets());document.querySelectorAll('[data-close-sheet]').forEach(b=>b.addEventListener('click',()=>closeSheets()));bindSheetSwipe(refs.routeSheet);bindSheetSwipe(refs.placeSheet);
-    refs.addPointFromMap.addEventListener('click',()=>setRouteAddMode(true));refs.routeAddDone.addEventListener('click',()=>{if(state.routePoints.length>=2)state.routeGoalSet=true;setRouteAddMode(false);saveState();syncRouteUi();openRouteSheet();autoCalculateRoute();});refs.routeUndoQuick.addEventListener('click',()=>{if(state.routePoints.length){const removedGoal=state.routeGoalSet&&state.routePoints.length>=2;state.routePoints.pop();if(removedGoal||state.routePoints.length<2)state.routeGoalSet=false;afterRoutePointEdit();}});refs.routeClearQuick.addEventListener('click',()=>{state.routePoints=[];state.routeGoalSet=false;clearRouteResult();saveState();syncRouteUi();requestRender();});
-    refs.clearRoute.addEventListener('click',()=>{state.routePoints=[];state.routeGoalSet=false;clearRouteResult();saveState();syncRouteUi();requestRender();});refs.calculateRoute.addEventListener('click',()=>calculateRoute(1));refs.showAlternate.addEventListener('click',()=>calculateRoute(3));
+    refs.addPointFromMap.addEventListener('click',()=>setRouteAddMode(true));refs.routeAddDone.addEventListener('click',()=>{if(state.routePoints.length>=2)state.routeGoalSet=true;setRouteAddMode(false);saveState();syncRouteUi();openRouteSheet();autoCalculateRoute();});refs.routeUndoQuick.addEventListener('click',()=>{if(state.routePoints.length){const removedGoal=state.routeGoalSet&&state.routePoints.length>=2;state.routePoints.pop();if(removedGoal||state.routePoints.length<2)state.routeGoalSet=false;afterRoutePointEdit(state.routePoints.length>=2);}});refs.routeClearQuick.addEventListener('click',()=>{state.routePoints=[];state.routeGoalSet=false;afterRoutePointEdit(false);});
+    refs.clearRoute.addEventListener('click',()=>{state.routePoints=[];state.routeGoalSet=false;afterRoutePointEdit(false);});refs.calculateRoute.addEventListener('click',()=>calculateRoute(1));refs.showAlternate.addEventListener('click',()=>calculateRoute(3));
     refs.gateFilter.addEventListener('input',filterGateList);refs.clearBlocked.addEventListener('click',()=>{state.blockedGates=[];clearRouteResult();saveState();syncRouteUi();requestRender();if(state.routePoints.length>=2)autoCalculateRoute();});
     refs.placeStart.addEventListener('click',setStartFromPlace);refs.placeGoal.addEventListener('click',setGoalFromPlace);refs.placeVia.addEventListener('click',addViaFromPlace);refs.placeCopy.addEventListener('click',()=>{if(!selectedPlace)return;const text=`${selectedPlace.center_x},${selectedPlace.center_y}`;closeSheets();copyText(text);});refs.placeBlockGate.addEventListener('click',()=>{if(!selectedPlace||selectedPlace._kind!=='gate')return;const id=Number(selectedPlace.id);if(state.blockedGates.includes(id))state.blockedGates=state.blockedGates.filter(v=>v!==id);else state.blockedGates.push(id);clearRouteResult();saveState();openPlaceSheet(selectedPlace);syncRouteUi();requestRender();if(state.routePoints.length>=2)autoCalculateRoute();});
     refs.coordinatePill.addEventListener('click',()=>{if(lastGamePosition)copyText(`${lastGamePosition[0]},${lastGamePosition[1]}`);});
