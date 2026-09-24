@@ -1,381 +1,146 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#15181d">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  <meta name="theme-color" content="#121820">
   <meta name="robots" content="noindex, nofollow">
-  <title>真戦 戦略マップ</title>
+  <title>真戦 PK2マップ</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="app">
-    <header class="app-header">
+    <header class="topbar">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">戦</div>
-        <div>
-          <h1>真戦 戦略マップ</h1>
-          <p>PK2マップ・経路探索・作戦作成</p>
-        </div>
+        <strong>真戦 PK2マップ</strong>
+        <span>参謀用</span>
       </div>
-
-      <label class="project-name-wrap">
-        <span>作戦名</span>
-        <input id="projectName" type="text" value="新規作戦" maxlength="80" autocomplete="off">
-      </label>
-
-      <nav class="header-actions" aria-label="ファイル操作">
-        <button id="newProjectBtn" class="button ghost" type="button">新規</button>
-        <button id="builtinMapBtn" class="button" type="button">PK2マップ</button>
-        <button id="saveProjectBtn" class="button" type="button">作戦保存</button>
-        <button id="loadProjectBtn" class="button" type="button">作戦読込</button>
-        <div class="menu-wrap">
-          <button id="exportMenuBtn" class="button accent" type="button" aria-expanded="false">共有・出力</button>
-          <div id="exportMenu" class="popup-menu" hidden>
-            <button id="exportViewPngBtn" type="button">現在画面をPNG出力</button>
-            <button id="exportViewerBtn" type="button">共有用HTML出力</button>
-          </div>
-        </div>
-        <button id="helpBtn" class="icon-button" type="button" title="使い方" aria-label="使い方">?</button>
-        <button id="mobileModeBtn" class="button ghost mobile-only" type="button" aria-pressed="false" title="閲覧／編集モードを切り替え">編集</button>
-        <button id="mobileFullscreenBtn" class="button ghost mobile-only" type="button" title="マップを全画面表示">全画面</button>
-        <button id="toggleInspectorBtn" class="button ghost mobile-only" type="button">設定</button>
-      </nav>
+      <div class="top-actions">
+        <button id="fitBtn" class="icon-button text-button" type="button">全体</button>
+        <button id="helpBtn" class="icon-button" type="button" aria-label="使い方">?</button>
+      </div>
     </header>
 
-    <main class="workspace">
-      <aside class="tool-panel" aria-label="作戦記号ツール">
-        <div class="tool-section">
-          <div class="section-title">操作</div>
-          <button class="tool-button active" data-tool="select" type="button" title="選択・移動 (V)">
-            <span class="tool-icon pointer-icon">↖</span><span>選択</span>
-          </button>
-</div>
+    <main id="mapStage" class="map-stage">
+      <canvas id="mapCanvas" aria-label="PK2マップ"></canvas>
 
-        <div class="tool-section">
-          <div class="section-title">部隊・拠点</div>
-          <button class="tool-button" data-tool="ally" type="button"><span class="tool-icon marker ally">自</span><span>自軍</span></button>
-          <button class="tool-button" data-tool="enemy" type="button"><span class="tool-icon marker enemy">敵</span><span>敵軍</span></button>
-          <button class="tool-button" data-tool="garrison" type="button"><span class="tool-icon">♜</span><span>駐屯</span></button>
-          <button class="tool-button" data-tool="camp" type="button"><span class="tool-icon">▲</span><span>幕舎</span></button>
-          <button class="tool-button" data-tool="fort" type="button"><span class="tool-icon">▥</span><span>陣城</span></button>
-          <button class="tool-button" data-tool="relocate" type="button"><span class="tool-icon">遷</span><span>遷城</span></button>
+      <div class="search-panel">
+        <div class="search-box">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input id="placeSearch" type="search" autocomplete="off" placeholder="城・関所を検索" aria-label="城・関所を検索">
+          <button id="searchClearBtn" class="search-clear" type="button" aria-label="検索を消去" hidden>×</button>
         </div>
+        <div id="searchResults" class="search-results" hidden></div>
+      </div>
 
-        <div class="tool-section">
-          <div class="section-title">作戦</div>
-          <button class="tool-button" data-tool="arrow" type="button"><span class="tool-icon">➜</span><span>侵攻</span></button>
-          <button class="tool-button" data-tool="defense" type="button"><span class="tool-icon">┻</span><span>防衛線</span></button>
-          <button class="tool-button" data-tool="target" type="button"><span class="tool-icon">◎</span><span>目標</span></button>
-          <button class="tool-button" data-tool="text" type="button"><span class="tool-icon">T</span><span>メモ</span></button>
-        </div>
+      <div class="map-toggles" aria-label="マップ表示">
+        <button id="toggleCityNames" class="map-toggle active" type="button" aria-pressed="true">城名</button>
+        <button id="toggleGateNames" class="map-toggle active" type="button" aria-pressed="true">関所名</button>
+        <button id="toggleResourceZones" class="map-toggle" type="button" aria-pressed="false">資源州</button>
+      </div>
 
-        <div class="tool-section">
-          <div class="section-title">経路探索</div>
-          <button class="tool-button" data-tool="route" type="button" title="経路点を追加 (R)">
-            <span class="tool-icon">路</span><span>経路</span>
-          </button>
-        </div>
+      <div id="resourceLegend" class="resource-legend" hidden>
+        <span><i class="swatch north"></i>北：筑後・日向</span>
+        <span><i class="swatch south"></i>南：肥後・日向</span>
+      </div>
 
-        <div class="tool-section compact-actions">
-          <button id="undoBtn" class="small-action" type="button" disabled title="元に戻す (Ctrl+Z)">↶</button>
-          <button id="redoBtn" class="small-action" type="button" disabled title="やり直す (Ctrl+Y)">↷</button>
-          <button id="deleteBtn" class="small-action danger" type="button" disabled title="選択削除 (Delete)">⌫</button>
-        </div>
-      </aside>
+      <button id="routeFab" class="route-fab" type="button">
+        <span class="route-fab-icon">路</span>
+        <span>経路</span>
+        <b id="routePointBadge" hidden>0</b>
+      </button>
 
-      <section id="stageWrap" class="stage-wrap" aria-label="作戦マップ">
-        <canvas id="mapCanvas"></canvas>
-        <div id="emptyState" class="empty-state">
-          <div class="empty-card">
-            <div class="empty-icon">地図</div>
-            <h2>PK2標準マップを読み込めませんでした</h2>
-            <p>PK2標準マップの読み込みに失敗しました。再読込をお試しください。</p>
-            <button id="emptyBuiltinMapBtn" class="button accent" type="button">PK2標準マップを再読込</button>
-          </div>
-        </div>
-        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      <div id="routeAddBanner" class="route-add-banner" hidden>
+        <span>経路点を地図でタップ</span>
+        <button id="routeUndoQuickBtn" type="button">1点戻す</button>
+        <button id="routeAddDoneBtn" type="button">完了</button>
+      </div>
 
-        <button id="mobileRouteUndoFloat" class="mobile-route-undo mobile-only" type="button" hidden>↶ 1点戻す</button>
+      <button id="coordinatePill" class="coordinate-pill" type="button" title="座標をコピー">
+        <span>座標</span><strong id="gamePosition">--,--</strong>
+      </button>
 
-        <div id="mobileSelectionBar" class="mobile-selection-bar" hidden aria-label="選択中の記号の操作">
-          <button id="mobilePropertyBtn" type="button">属性</button>
-          <button id="mobileDuplicateBtn" type="button">複製</button>
-          <button id="mobileFrontBtn" type="button">最前面</button>
-          <button id="mobileDeleteBtn" class="danger" type="button">削除</button>
-        </div>
-
-        <button id="mobileFullscreenExitBtn" class="mobile-fullscreen-exit" type="button" hidden>× 全画面終了</button>
-        <div id="placeContextBackdrop" class="place-context-backdrop" hidden></div>
-        <div id="placeContextMenu" class="place-context-menu" hidden>
-          <div id="placeContextTitle" class="place-context-title"></div>
-          <button id="placeContextRouteBtn" type="button">経路点に追加</button>
-          <button id="placeContextCopyBtn" type="button">座標をコピー</button>
-          <button id="placeContextGateBtn" type="button" hidden>この関所を通行不可</button>
-          <button id="placeContextDeleteBtn" class="danger-context-button" type="button" hidden>この記号を削除</button>
-        </div>
-      </section>
-
-      <aside id="inspector" class="inspector" aria-label="作戦設定">
-        <div class="inspector-header">
-          <h2>作戦設定</h2>
-          <button id="closeInspectorBtn" class="icon-button mobile-only" type="button" aria-label="閉じる">×</button>
-        </div>
-        <div class="mobile-inspector-tabs mobile-only" role="tablist" aria-label="設定カテゴリ">
-          <button class="mobile-inspector-tab active" type="button" data-mobile-inspector-tab="scenario" role="tab" aria-selected="true">作戦案</button>
-          <button class="mobile-inspector-tab" type="button" data-mobile-inspector-tab="objects" role="tab" aria-selected="false">記号</button>
-          <button class="mobile-inspector-tab" type="button" data-mobile-inspector-tab="route" role="tab" aria-selected="false">経路</button>
-          <button class="mobile-inspector-tab" type="button" data-mobile-inspector-tab="display" role="tab" aria-selected="false">表示</button>
-        </div>
-
-        <section class="panel-section scenario-section" data-mobile-panel="scenario">
-          <div class="section-heading">
-            <h3>作戦案</h3>
-          </div>
-          <div class="scenario-tabs" role="tablist" aria-label="作戦案の切り替え">
-            <button class="scenario-tab active" type="button" data-scenario="A">作戦案A</button>
-            <button class="scenario-tab" type="button" data-scenario="B">作戦案B</button>
-            <button class="scenario-tab" type="button" data-scenario="C">作戦案C</button>
-          </div>
-        </section>
-
-        <section class="panel-section phase-filter-section" data-mobile-panel="display">
-          <div class="section-heading">
-            <h3>表示する段階</h3>
-          </div>
-          <select id="phaseFilter">
-            <option value="すべて">すべて</option>
-            <option value="共通">共通のみ</option>
-            <option value="第1段階">共通＋第1段階</option>
-            <option value="第2段階">共通＋第2段階</option>
-            <option value="第3段階">共通＋第3段階</option>
-            <option value="予備">共通＋予備</option>
-          </select>
-        </section>
-
-        <section class="panel-section layer-section" data-mobile-panel="objects">
-          <div class="section-heading">
-            <h3>配置済み記号</h3>
-            <span id="objectCount" class="count-badge">0</span>
-          </div>
-          <div id="layerList" class="layer-list"></div>
-        </section>
-
-        <section id="propertySection" class="panel-section property-section" data-mobile-panel="objects" hidden>
-          <div class="section-heading">
-            <h3>属性</h3>
-          </div>
-          <form id="propertyForm" class="property-form" onsubmit="return false;">
-            <label>
-              <span>名称</span>
-              <input id="propLabel" type="text" maxlength="80" autocomplete="off">
-            </label>
-
-            <div class="form-row property-number-row">
-              <label>
-                <span>記号の大きさ</span>
-                <input id="propSize" type="number" min="8" max="300" step="1">
-              </label>
-              <label>
-                <span>文字の大きさ</span>
-                <input id="propLabelSize" type="number" min="8" max="120" step="1">
-              </label>
-            </div>
-
-            <div class="form-row property-number-row">
-              <label>
-                <span>線の太さ</span>
-                <input id="propLineWidth" type="number" min="1" max="50" step="1">
-              </label>
-              <label id="symbolVisibleField" class="symbol-visible-field">
-                <span>記号本体</span>
-                <span class="property-check"><input id="propSymbolVisible" type="checkbox" checked> 表示する</span>
-              </label>
-            </div>
-
-            <label>
-              <span>作戦段階</span>
-              <select id="propPhase">
-                <option value="共通">共通</option>
-                <option value="第1段階">第1段階</option>
-                <option value="第2段階">第2段階</option>
-                <option value="第3段階">第3段階</option>
-                <option value="予備">予備</option>
-              </select>
-            </label>
-
-            <div class="object-actions">
-              <button id="duplicateBtn" class="button ghost" type="button">複製</button>
-              <button id="bringFrontBtn" class="button ghost" type="button">最前面</button>
-              <button id="deleteObjectBtn" class="button danger" type="button">削除</button>
-            </div>
-          </form>
-        </section>
-
-        <section class="panel-section route-section" data-mobile-panel="route">
-          <div class="section-heading">
-            <h3>経路探索</h3>
-            <span id="routeBadge" class="count-badge">PK2</span>
-          </div>
-          <p class="muted route-note">左の「経路」を選んでマップをクリックすると経路点を追加できます。最短マス数を最優先し、同じ最短距離なら駅路をより多く通る経路を選びます。「海上航路を使用」を有効にすると航路・水路も通行できます。</p>
-
-          <label class="route-field">
-            <span>経路点（x,y / 1行1点）</span>
-            <textarea id="routePoints" rows="4" spellcheck="false" placeholder="1281,2025&#10;1253,2020"></textarea>
-          </label>
-          <div class="route-buttons">
-            <button id="routeCalculateBtn" class="button accent" type="button">経路計算</button>
-            <button id="routeUndoPointBtn" class="button ghost" type="button">1点戻す</button>
-            <button id="routeClearBtn" class="button ghost" type="button">クリア</button>
-          </div>
-          <div class="route-alternatives">
-            <label class="route-check"><input id="showAltRoute2" type="checkbox"><span>経路候補2を表示</span></label>
-            <label class="route-check"><input id="showAltRoute3" type="checkbox"><span>経路候補3を表示</span></label>
-            <label class="route-check"><input id="allowSeaRoutes" type="checkbox" checked><span>海上航路を使用</span></label>
-          </div>
-
-          <label class="route-field">
-            <span>城・関所検索</span>
-            <div class="route-search-row">
-              <input id="placeSearch" list="placeSearchList" autocomplete="off" placeholder="例：榛名関所">
-              <button id="placeCenterBtn" class="button ghost" type="button">表示</button>
-              <button id="placeAddBtn" class="button ghost" type="button">経路点</button>
-            </div>
-          </label>
-          <datalist id="placeSearchList"></datalist>
-
-          <div id="routeResult" class="route-result"><span class="route-placeholder">経路を計算すると、ここに最短マス数を表示します。</span></div>
-
-          <details class="route-details">
-            <summary>通行不可にする関所</summary>
-            <div class="route-buttons compact">
-              <button id="gateBlockClearBtn" class="button ghost" type="button">全解除</button>
-              <button id="gateBlockAllBtn" class="button ghost" type="button">全遮断</button>
-            </div>
-            <input id="gateFilter" class="route-filter" type="text" autocomplete="off" placeholder="関所名で絞り込み">
-            <div id="gateBlockList" class="gate-block-list"></div>
-          </details>
-
-        </section>
-
-        <section class="panel-section map-display-section" data-mobile-panel="display">
-          <div class="section-heading">
-            <h3>マップ表示</h3>
-          </div>
-          <label class="route-check"><input id="showGateMarkers" type="checkbox" checked><span>関所マーカー</span></label>
-          <label class="route-check"><input id="showCityMarkers" type="checkbox"><span>城マーカー</span></label>
-          <label class="route-check"><input id="showGateLabels" type="checkbox" checked><span>関所名</span></label>
-          <label class="route-check"><input id="showCityLabels" type="checkbox" checked><span>城名</span></label>
-          <label class="route-check resource-zone-toggle"><input id="showResourceZones" type="checkbox"><span>資源州エリア</span></label>
-          <div class="resource-zone-legend" aria-label="資源州の色分け">
-            <span><i class="resource-zone-swatch north"></i>北側：筑後・日向</span>
-            <span><i class="resource-zone-swatch south"></i>南側：肥後・日向</span>
-            <small>黄色の二重丸は資源州境界の関所</small>
-          </div>
-        </section>
-      </aside>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      <div id="loadingBadge" class="loading-badge">経路データ準備中…</div>
     </main>
 
-    <footer class="status-bar">
-      <div class="game-coordinate-status" title="現在のゲーム座標">
-        <span class="game-coordinate-label">ゲーム座標</span>
-        <strong id="gamePosition">未設定</strong>
-      </div>
-      <span class="status-spacer"></span>
-      <button id="fitBtn" class="status-button" type="button">全体表示</button>
-      <button id="zoomOutBtn" class="status-button" type="button" aria-label="縮小">−</button>
-      <span id="zoomDisplay">100%</span>
-      <button id="zoomInBtn" class="status-button" type="button" aria-label="拡大">＋</button>
-    </footer>
-  </div>
+    <div id="sheetBackdrop" class="sheet-backdrop" hidden></div>
 
-  <input id="projectFileInput" type="file" accept=".nssmap,.json,application/json" hidden>
-
-  <dialog id="helpDialog" class="modal">
-    <form method="dialog" class="modal-card large">
-      <div class="modal-header">
-        <h2>使い方</h2>
-        <button class="icon-button" value="cancel" aria-label="閉じる">×</button>
-      </div>
-      <div class="modal-body help-content">
-        <section>
-          <h3>1. PK2標準マップ</h3>
-          <p>APK/EBDLから復元したPK2マップを内蔵しています。起動時に自動で読み込み、ゲーム座標も設定済みです。</p>
-        </section>
-        <section>
-          <h3>2. 経路探索</h3>
-          <p>左の「経路」を選び、開始・経由・到着地点を順番にクリックします。「経路計算」で山・河川・海などを避けた陸路を探索します。最短マス数を最優先し、同じ最短距離なら駅路をより多く通る経路を優先します。「経路候補2」「経路候補3」は、開始・経由・到着地点を除いて経路1と重ならない別経路を探索します。スマホでは地図上の経路点を直接ドラッグして位置を修正でき、「経路」選択中は地図上の「1点戻す」も使用できます。</p>
-        </section>
-        <section>
-          <h3>3. 城・関所</h3>
-          <p>PCでは地点を右クリック、スマホでは地点を長押しすると、経路点への追加や座標コピー、関所の通行不可切り替えができます。スマホでは長押しメニューを画面下から大きく表示します。配置済み記号を長押しすると削除メニューを表示します。「表示」タブで城名・関所名やマーカーを個別に表示／非表示できます。</p>
-        </section>
-        <section>
-          <h3>4. 作戦案</h3>
-          <p>作戦案A/B/Cはそれぞれ独立した記号・経路を保持します。案を切り替えると、地図上の記号と経路も切り替わります。</p>
-        </section>
-        <section>
-          <h3>5. 作戦記号</h3>
-          <p>左のツールを選び、マップ上をクリックして配置します。記号上のドラッグは記号移動、それ以外の場所のドラッグはマップ移動です。選択するとサイズ変更ハンドルが表示され、防衛線は端点変更と回転ができます。スマホでは記号選択時に地図下部へ「属性・複製・最前面・削除」の操作バーを表示します。設定画面は「作戦案・記号・経路・表示」の4タブです。</p>
-        </section>
-        <section>
-          <h3>6. スマホ操作</h3>
-          <p>「編集」では記号配置・移動・経路編集ができます。「閲覧」に切り替えると1本指操作は地図移動専用になり、誤編集を防げます。「全画面」は編集UIを隠してマップだけを表示します。2本指ピンチで拡大・縮小できます。</p>
-        </section>
-        <section>
-          <h3>7. 保存と共有</h3>
-          <p>「作戦保存」は編集可能な <code>.nssmap</code> ファイルです。「共有用HTML」は閲覧専用の単一HTMLを作成し、出力時の城・関所の名称／マーカー表示、経路候補、作戦段階を引き継ぎます。</p>
-        </section>
-        <section>
-          <h3>主な操作</h3>
-          <dl class="shortcut-list">
-            <div><dt>マウスホイール</dt><dd>拡大・縮小</dd></div>
-            <div><dt>地図上をドラッグ</dt><dd>マップ移動</dd></div>
-            <div><dt>記号上をドラッグ</dt><dd>記号移動</dd></div>
-            <div><dt>選択記号の四隅をドラッグ</dt><dd>サイズ変更</dd></div>
-            <div><dt>防衛線の青いハンドルをドラッグ</dt><dd>回転</dd></div>
-            <div><dt>Ctrl＋Z / Ctrl＋Y</dt><dd>元に戻す / やり直す</dd></div>
-            <div><dt>Delete</dt><dd>選択記号を削除</dd></div>
-            <div><dt>V / R</dt><dd>選択 / 経路点追加</dd></div>
-          </dl>
-        </section>
-      </div>
-      <div class="modal-footer">
-        <button class="button accent" value="default">閉じる</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="calibrationDialog" class="modal">
-    <form id="calibrationForm" method="dialog" class="modal-card">
-      <div class="modal-header">
-        <h2>ゲーム座標の設定</h2>
-        <button class="icon-button" value="cancel" aria-label="閉じる">×</button>
-      </div>
-      <div class="modal-body">
-        <p class="modal-note">PK2標準マップはゲーム座標が設定済みです。</p>
-        <div class="coordinate-grid">
-          <fieldset>
-            <legend>画像の左上</legend>
-            <label><span>X</span><input id="calTopLeftX" type="number" step="1" required></label>
-            <label><span>Y</span><input id="calTopLeftY" type="number" step="1" required></label>
-          </fieldset>
-          <fieldset>
-            <legend>画像の右下</legend>
-            <label><span>X</span><input id="calBottomRightX" type="number" step="1" required></label>
-            <label><span>Y</span><input id="calBottomRightY" type="number" step="1" required></label>
-          </fieldset>
-        </div>
-      </div>
-      <div class="modal-footer between">
-        <button id="clearCalibrationBtn" class="button ghost" type="button">設定解除</button>
+    <section id="routeSheet" class="bottom-sheet" aria-label="経路探索" hidden>
+      <div class="sheet-grabber"></div>
+      <div class="sheet-header">
         <div>
-          <button class="button ghost" value="cancel">キャンセル</button>
-          <button id="saveCalibrationBtn" class="button accent" value="default">保存</button>
+          <h2>経路探索</h2>
+          <p>最短距離を優先し、同距離なら駅路を優先</p>
         </div>
+        <button class="sheet-close" data-close-sheet type="button" aria-label="閉じる">×</button>
       </div>
-    </form>
-  </dialog>
+
+      <div class="sheet-scroll">
+        <div id="routePointsList" class="route-points-list"></div>
+        <div class="sheet-button-row">
+          <button id="addPointFromMapBtn" class="button secondary" type="button">＋ 地図から追加</button>
+          <button id="clearRouteBtn" class="button ghost" type="button">クリア</button>
+        </div>
+
+        <label class="switch-row">
+          <span><strong>海上航路</strong><small>航路・水路を経路に含める</small></span>
+          <input id="allowSeaRoutes" type="checkbox" checked>
+        </label>
+
+        <button id="calculateRouteBtn" class="button primary full" type="button">経路を表示</button>
+        <div id="routeResult" class="route-result"><p>開始地点と到着地点を指定してください。</p></div>
+        <button id="showAlternateRoutesBtn" class="button secondary full" type="button" hidden>別ルートを見る</button>
+
+        <details class="block-gates-details">
+          <summary><span>通行不可にする関所</span><b id="blockedGateCount">0</b></summary>
+          <div class="block-gates-tools">
+            <input id="gateFilter" type="search" autocomplete="off" placeholder="関所名で絞り込み">
+            <button id="clearBlockedGatesBtn" class="small-button" type="button">全解除</button>
+          </div>
+          <div id="gateBlockList" class="gate-block-list"></div>
+        </details>
+      </div>
+    </section>
+
+    <section id="placeSheet" class="bottom-sheet compact-sheet" aria-label="地点操作" hidden>
+      <div class="sheet-grabber"></div>
+      <div class="sheet-header">
+        <div>
+          <h2 id="placeSheetTitle">地点</h2>
+          <p id="placeSheetMeta"></p>
+        </div>
+        <button class="sheet-close" data-close-sheet type="button" aria-label="閉じる">×</button>
+      </div>
+      <div class="place-actions">
+        <button id="placeStartBtn" class="action-card" type="button"><b>ここから</b><span>出発地点</span></button>
+        <button id="placeGoalBtn" class="action-card" type="button"><b>ここまで</b><span>到着地点</span></button>
+        <button id="placeViaBtn" class="action-card" type="button"><b>経由地</b><span>途中に追加</span></button>
+        <button id="placeCopyBtn" class="action-card" type="button"><b>座標コピー</b><span id="placeCopyCoord">-</span></button>
+        <button id="placeBlockGateBtn" class="action-card warning" type="button" hidden><b>通行不可</b><span>関所を切替</span></button>
+      </div>
+    </section>
+
+    <dialog id="helpDialog" class="help-dialog">
+      <form method="dialog">
+        <div class="sheet-header">
+          <div><h2>使い方</h2><p>スマホ操作を基準にしています</p></div>
+          <button class="sheet-close" value="cancel" aria-label="閉じる">×</button>
+        </div>
+        <div class="help-body">
+          <h3>地図</h3>
+          <p>1本指で移動、2本指で拡大・縮小します。城・関所をタップすると、その地点を出発・到着・経由地点に指定できます。</p>
+          <h3>表示</h3>
+          <p>地図上部の「城名」「関所名」「資源州」で表示を切り替えます。関所名にはレベルも表示します。</p>
+          <h3>経路</h3>
+          <p>右下の「経路」から経路点を設定します。「地図から追加」を使うと、地図上をタップして経路点を追加できます。海上航路の使用や、通行不可にする関所も設定できます。</p>
+          <h3>座標</h3>
+          <p>左下の座標表示をタップすると現在のゲーム座標をコピーします。</p>
+        </div>
+        <button class="button primary full" value="default">閉じる</button>
+      </form>
+    </dialog>
+  </div>
 
   <script src="pk2_embedded_data.js"></script>
   <script src="app.js"></script>
