@@ -80,7 +80,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     routePointsList: $('routePointsList'), addPointFromMap: $('addPointFromMapBtn'), clearRoute: $('clearRouteBtn'),
     calculateRoute: $('calculateRouteBtn'), routeResult: $('routeResult'), showAlternate: $('showAlternateRoutesBtn'),
     gateFilter: $('gateFilter'), gateBlockList: $('gateBlockList'), clearBlocked: $('clearBlockedGatesBtn'), blockedGateCount: $('blockedGateCount'),
-    routeAddBanner: $('routeAddBanner'), routeUndoQuick: $('routeUndoQuickBtn'), routeAddDone: $('routeAddDoneBtn'),
+    routeAddBanner: $('routeAddBanner'), routeUndoQuick: $('routeUndoQuickBtn'), routeClearQuick: $('routeClearQuickBtn'), routeAddDone: $('routeAddDoneBtn'),
     coordinatePill: $('coordinatePill'), gamePosition: $('gamePosition'), toast: $('toast'), loadingBadge: $('loadingBadge'),
     placeSheet: $('placeSheet'), placeTitle: $('placeSheetTitle'), placeMeta: $('placeSheetMeta'), placeStart: $('placeStartBtn'), placeGoal: $('placeGoalBtn'),
     placeVia: $('placeViaBtn'), placeCopy: $('placeCopyBtn'), placeCopyCoord: $('placeCopyCoord'), placeBlockGate: $('placeBlockGateBtn')
@@ -135,6 +135,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   const state = loadState();
   state.routePoints = Array.isArray(state.routePoints) ? state.routePoints.filter(validPoint) : [];
   state.blockedGates = Array.isArray(state.blockedGates) ? state.blockedGates.map(Number).filter(Number.isFinite) : [];
+  state.routeGoalSet = state.routeGoalSet === true;
   state.routePath = [];
   state.altPaths = [];
   state.routeResult = null;
@@ -144,7 +145,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   let gesture = null;
 
   function loadState() {
-    const base = { showCityNames:true, showGateNames:true, showResourceZones:false, routePoints:[], blockedGates:[] };
+    const base = { showCityNames:true, showGateNames:true, showResourceZones:false, routePoints:[], blockedGates:[], routeGoalSet:false };
     try {
       const saved = JSON.parse(localStorage.getItem('pk2-mobile-state') || 'null');
       return Object.assign(base, saved && typeof saved === 'object' ? saved : {});
@@ -154,7 +155,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     try {
       localStorage.setItem('pk2-mobile-state', JSON.stringify({
         showCityNames:state.showCityNames, showGateNames:state.showGateNames, showResourceZones:state.showResourceZones,
-        routePoints:state.routePoints, blockedGates:state.blockedGates
+        routePoints:state.routePoints, blockedGates:state.blockedGates, routeGoalSet:state.routeGoalSet === true
       }));
     } catch {}
   }
@@ -279,7 +280,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     if(state.showAlternates && state.altPaths[1]) drawRoutePath(state.altPaths[1],'#bf73ff',[3,5]);
     for(let i=0;i<state.routePoints.length;i++) {
       const [gx,gy]=state.routePoints[i], p=gameToWorld(gx+.5,gy+.5), r=Math.max(4,6/view.scale);
-      ctx.save();ctx.fillStyle=i===0?'#23b967':(i===state.routePoints.length-1&&i>0?'#e13d36':'#ffd54d');ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(1,1.4/view.scale);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.save();ctx.fillStyle=i===0?'#23b967':(state.routeGoalSet&&i===state.routePoints.length-1&&i>0?'#e13d36':'#ffd54d');ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(1,1.4/view.scale);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();ctx.stroke();
       ctx.fillStyle='#111';ctx.font=`900 ${Math.max(8,10/view.scale)}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i+1),p.x,p.y);ctx.restore();
     }
   }
@@ -388,15 +389,31 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     else pendingAutoRoute=true;
   }
   function setStartFromPlace() {
-    if(!selectedPlace)return;const p=placeRoutePoint(selectedPlace);if(state.routePoints.length)state.routePoints[0]=p;else state.routePoints=[p];
+    if(!selectedPlace)return;
+    const p=placeRoutePoint(selectedPlace);
+    if(state.routePoints.length) state.routePoints[0]=p;
+    else state.routePoints=[p];
     closeSheets();afterRoutePointEdit(true);
   }
   function setGoalFromPlace() {
-    if(!selectedPlace)return;const p=placeRoutePoint(selectedPlace);if(!state.routePoints.length)state.routePoints=[p];else if(state.routePoints.length===1)state.routePoints.push(p);else state.routePoints[state.routePoints.length-1]=p;
+    if(!selectedPlace)return;
+    const p=placeRoutePoint(selectedPlace);
+    if(!state.routePoints.length) {
+      state.routePoints=[p];
+      state.routeGoalSet=false;
+    } else if(state.routeGoalSet && state.routePoints.length>=2) {
+      state.routePoints[state.routePoints.length-1]=p;
+    } else {
+      state.routePoints.push(p);
+      state.routeGoalSet=true;
+    }
     closeSheets();afterRoutePointEdit(true);
   }
   function addViaFromPlace() {
-    if(!selectedPlace)return;const p=placeRoutePoint(selectedPlace);if(state.routePoints.length<2)state.routePoints.push(p);else state.routePoints.splice(state.routePoints.length-1,0,p);
+    if(!selectedPlace)return;
+    const p=placeRoutePoint(selectedPlace);
+    if(state.routeGoalSet && state.routePoints.length>=2) state.routePoints.splice(state.routePoints.length-1,0,p);
+    else state.routePoints.push(p);
     closeSheets();afterRoutePointEdit(true);
   }
   function afterRoutePointEdit(autoRoute=false) {
@@ -435,9 +452,9 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     if(!state.routePoints.length){refs.routePointsList.innerHTML='<div class="route-point-empty">城・関所または通行可能な地点を指定します。<br>「地図から追加」でも追加できます。</div>';}
     state.routePoints.forEach((p,i)=>{
       const row=document.createElement('div');row.className='route-point-row';row.dataset.index=String(i);
-      const place=routePointPlace(p),role=i===0?'出発':(i===state.routePoints.length-1&&i>0?'到着':'経由'),title=place?placeDisplayName(place):`地点 ${p[0]},${p[1]}`;
+      const place=routePointPlace(p),role=i===0?'出発':(state.routeGoalSet&&i===state.routePoints.length-1&&i>0?'到着':'経由'),title=place?placeDisplayName(place):`地点 ${p[0]},${p[1]}`;
       row.innerHTML=`<span class="route-point-index">${i+1}</span><span class="route-point-info"><b>${escapeHtml(title)}</b><small>${role} ・ ${p[0]},${p[1]}</small></span><span class="route-point-drag" aria-hidden="true">≡</span><button class="route-point-remove" type="button" aria-label="削除">×</button>`;
-      row.querySelector('button').addEventListener('click',()=>{state.routePoints.splice(i,1);afterRoutePointEdit(state.routePoints.length>=2);});bindRoutePointReorder(row,i);refs.routePointsList.appendChild(row);
+      row.querySelector('button').addEventListener('click',()=>{const wasGoal=state.routeGoalSet&&i===state.routePoints.length-1;state.routePoints.splice(i,1);if(wasGoal||state.routePoints.length<2)state.routeGoalSet=false;afterRoutePointEdit(state.routePoints.length>=2);});bindRoutePointReorder(row,i);refs.routePointsList.appendChild(row);
     });
     refs.blockedGateCount.textContent=String(state.blockedGates.length);refs.routeBadge.hidden=!state.routePoints.length;refs.routeBadge.textContent=String(state.routePoints.length);refs.showAlternate.hidden=!(state.routeResult&&state.routeResult.status==='ok'&&!state.showAlternates);
     syncBlockedGates();renderRouteResult();
@@ -511,8 +528,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     document.addEventListener('pointerdown',e=>{if(!e.target.closest('.search-panel'))refs.searchResults.hidden=true;},true);
     refs.toggleCity.addEventListener('click',()=>toggleDisplay('showCityNames',refs.toggleCity));refs.toggleGate.addEventListener('click',()=>toggleDisplay('showGateNames',refs.toggleGate));refs.toggleResource.addEventListener('click',()=>toggleDisplay('showResourceZones',refs.toggleResource));
     refs.routeFab.addEventListener('click',openRouteSheet);refs.sheetBackdrop.addEventListener('click',()=>closeSheets());document.querySelectorAll('[data-close-sheet]').forEach(b=>b.addEventListener('click',()=>closeSheets()));bindSheetSwipe(refs.routeSheet);bindSheetSwipe(refs.placeSheet);
-    refs.addPointFromMap.addEventListener('click',()=>setRouteAddMode(true));refs.routeAddDone.addEventListener('click',()=>{setRouteAddMode(false);openRouteSheet();autoCalculateRoute();});refs.routeUndoQuick.addEventListener('click',()=>{if(state.routePoints.length){state.routePoints.pop();afterRoutePointEdit();}});
-    refs.clearRoute.addEventListener('click',()=>{state.routePoints=[];clearRouteResult();saveState();syncRouteUi();requestRender();});refs.calculateRoute.addEventListener('click',()=>calculateRoute(1));refs.showAlternate.addEventListener('click',()=>calculateRoute(3));
+    refs.addPointFromMap.addEventListener('click',()=>setRouteAddMode(true));refs.routeAddDone.addEventListener('click',()=>{if(state.routePoints.length>=2)state.routeGoalSet=true;setRouteAddMode(false);saveState();syncRouteUi();openRouteSheet();autoCalculateRoute();});refs.routeUndoQuick.addEventListener('click',()=>{if(state.routePoints.length){const removedGoal=state.routeGoalSet&&state.routePoints.length>=2;state.routePoints.pop();if(removedGoal||state.routePoints.length<2)state.routeGoalSet=false;afterRoutePointEdit();}});refs.routeClearQuick.addEventListener('click',()=>{state.routePoints=[];state.routeGoalSet=false;clearRouteResult();saveState();syncRouteUi();requestRender();});
+    refs.clearRoute.addEventListener('click',()=>{state.routePoints=[];state.routeGoalSet=false;clearRouteResult();saveState();syncRouteUi();requestRender();});refs.calculateRoute.addEventListener('click',()=>calculateRoute(1));refs.showAlternate.addEventListener('click',()=>calculateRoute(3));
     refs.gateFilter.addEventListener('input',filterGateList);refs.clearBlocked.addEventListener('click',()=>{state.blockedGates=[];clearRouteResult();saveState();syncRouteUi();requestRender();if(state.routePoints.length>=2)autoCalculateRoute();});
     refs.placeStart.addEventListener('click',setStartFromPlace);refs.placeGoal.addEventListener('click',setGoalFromPlace);refs.placeVia.addEventListener('click',addViaFromPlace);refs.placeCopy.addEventListener('click',()=>{if(!selectedPlace)return;const text=`${selectedPlace.center_x},${selectedPlace.center_y}`;closeSheets();copyText(text);});refs.placeBlockGate.addEventListener('click',()=>{if(!selectedPlace||selectedPlace._kind!=='gate')return;const id=Number(selectedPlace.id);if(state.blockedGates.includes(id))state.blockedGates=state.blockedGates.filter(v=>v!==id);else state.blockedGates.push(id);clearRouteResult();saveState();openPlaceSheet(selectedPlace);syncRouteUi();requestRender();if(state.routePoints.length>=2)autoCalculateRoute();});
     refs.coordinatePill.addEventListener('click',()=>{if(lastGamePosition)copyText(`${lastGamePosition[0]},${lastGamePosition[1]}`);});

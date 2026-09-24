@@ -14,6 +14,7 @@
   --safe-top: env(safe-area-inset-top, 0px);
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Noto Sans JP", "Yu Gothic UI", sans-serif; }
 button, input { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
