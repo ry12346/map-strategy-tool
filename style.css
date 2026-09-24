@@ -46,9 +46,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .map-toggles { position: absolute; z-index: 10; top: 64px; right: 10px; display: flex; flex-direction: column; gap: 6px; }
 .map-toggle { min-width: 64px; height: 34px; padding: 0 10px; border: 1px solid rgba(255,255,255,.16); border-radius: 999px; background: rgba(22,30,39,.9); color: #acb7c2; font-size: 12px; font-weight: 800; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
 .map-toggle.active { color: #fff; border-color: rgba(79,163,255,.7); background: rgba(27,91,151,.92); }
-.route-fab { position: absolute; z-index: 11; right: 13px; bottom: calc(18px + var(--safe-bottom)); height: 54px; min-width: 82px; padding: 0 15px 0 10px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 18px; background: linear-gradient(180deg,#2d93f6,#1574d6); color: #fff; font-weight: 800; box-shadow: 0 9px 26px rgba(0,71,150,.45); }
-.route-fab-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 10px; background: rgba(255,255,255,.17); }
-.route-fab b { position: absolute; right: -4px; top: -6px; min-width: 21px; height: 21px; padding: 0 5px; border-radius: 11px; background: #f0b838; color: #1b1b18; display: grid; place-items: center; font-size: 11px; }
 .coordinate-pill { position: absolute; z-index: 8; left: 10px; bottom: calc(16px + var(--safe-bottom)); min-height: 38px; padding: 0 11px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; background: rgba(20,27,35,.9); color: var(--text); display: flex; align-items: center; gap: 7px; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
 .coordinate-pill span { color: var(--muted); font-size: 10px; }
 .coordinate-pill strong { font-size: 14px; letter-spacing: .02em; }

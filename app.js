@@ -76,7 +76,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     stage: $('mapStage'), canvas: $('mapCanvas'), fitBtn: $('fitBtn'), helpBtn: $('helpBtn'), helpDialog: $('helpDialog'),
     search: $('placeSearch'), searchClear: $('searchClearBtn'), searchResults: $('searchResults'),
     toggleCity: $('toggleCityNames'), toggleGate: $('toggleGateNames'), toggleResource: $('toggleResourceZones'),
-    routeFab: $('routeFab'), routeBadge: $('routePointBadge'), routeSheet: $('routeSheet'), sheetBackdrop: $('sheetBackdrop'),
+    routeSheet: $('routeSheet'), sheetBackdrop: $('sheetBackdrop'),
     routePointsList: $('routePointsList'), addPointFromMap: $('addPointFromMapBtn'), clearRoute: $('clearRouteBtn'),
     calculateRoute: $('calculateRouteBtn'), routeResult: $('routeResult'), showAlternate: $('showAlternateRoutesBtn'),
     gateFilter: $('gateFilter'), gateBlockList: $('gateBlockList'), clearBlocked: $('clearBlockedGatesBtn'), blockedGateCount: $('blockedGateCount'),
@@ -456,8 +456,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       row.innerHTML=`<span class="route-point-index">${i+1}</span><span class="route-point-info"><b>${escapeHtml(title)}</b><small>${role} ・ ${p[0]},${p[1]}</small></span><span class="route-point-drag" aria-hidden="true">≡</span><button class="route-point-remove" type="button" aria-label="削除">×</button>`;
       row.querySelector('button').addEventListener('click',()=>{const wasGoal=state.routeGoalSet&&i===state.routePoints.length-1;state.routePoints.splice(i,1);if(wasGoal||state.routePoints.length<2)state.routeGoalSet=false;afterRoutePointEdit(state.routePoints.length>=2);});bindRoutePointReorder(row,i);refs.routePointsList.appendChild(row);
     });
-    refs.blockedGateCount.textContent=String(state.blockedGates.length);refs.routeBadge.hidden=!state.routePoints.length;refs.routeBadge.textContent=String(state.routePoints.length);refs.showAlternate.hidden=!(state.routeResult&&state.routeResult.status==='ok'&&!state.showAlternates);
-    syncBlockedGates();renderRouteResult();
+    refs.blockedGateCount.textContent=String(state.blockedGates.length);refs.showAlternate.hidden=!(state.routeResult&&state.routeResult.status==='ok'&&!state.showAlternates);
+    syncQuickRouteBar();syncBlockedGates();renderRouteResult();
   }
   function populateGateList() { refs.gateBlockList.innerHTML='';for(const g of gates.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),'ja'))){const label=document.createElement('label');label.className='gate-block-item';label.dataset.label=`${gateDisplayName(g)} ${g.province_names||''}`.toLowerCase();label.innerHTML=`<input type="checkbox" data-id="${g.id}"><span>${escapeHtml(gateDisplayName(g))}</span><small>${escapeHtml(g.province_names||'')}</small>`;label.querySelector('input').addEventListener('change',e=>{const id=Number(e.target.dataset.id);if(e.target.checked){if(!state.blockedGates.includes(id))state.blockedGates.push(id);}else state.blockedGates=state.blockedGates.filter(v=>v!==id);clearRouteResult();saveState();syncRouteUi();requestRender();if(state.routePoints.length>=2)autoCalculateRoute();});refs.gateBlockList.appendChild(label);} }
   function syncBlockedGates() { for(const cb of refs.gateBlockList.querySelectorAll('input[type="checkbox"]'))cb.checked=state.blockedGates.includes(Number(cb.dataset.id)); }
@@ -498,7 +498,12 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   }
   function showToast(message,error=false) {clearTimeout(toastTimer);refs.toast.textContent=message;refs.toast.classList.toggle('error',error);refs.toast.classList.add('show');toastTimer=setTimeout(()=>refs.toast.classList.remove('show'),2200);}
 
-  function setRouteAddMode(on) {routeAddMode=!!on;refs.routeAddBanner.hidden=!routeAddMode;refs.routeFab.hidden=routeAddMode;refs.coordinatePill.hidden=routeAddMode;if(routeAddMode)closeSheets();requestRender();}
+  function syncQuickRouteBar() {
+    const show=routeAddMode||state.routePoints.length>0;
+    refs.routeAddBanner.hidden=!show;
+    refs.coordinatePill.hidden=show;
+  }
+  function setRouteAddMode(on) {routeAddMode=!!on;syncQuickRouteBar();if(routeAddMode)closeSheets();requestRender();}
   function toggleDisplay(key,button) {state[key]=!state[key];button.classList.toggle('active',state[key]);button.setAttribute('aria-pressed',String(state[key]));saveState();requestRender();}
 
   function bindSheetSwipe(sheet) {
@@ -527,7 +532,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     refs.searchClear.addEventListener('click',()=>{refs.search.value='';updateSearchResults();refs.search.focus();});
     document.addEventListener('pointerdown',e=>{if(!e.target.closest('.search-panel'))refs.searchResults.hidden=true;},true);
     refs.toggleCity.addEventListener('click',()=>toggleDisplay('showCityNames',refs.toggleCity));refs.toggleGate.addEventListener('click',()=>toggleDisplay('showGateNames',refs.toggleGate));refs.toggleResource.addEventListener('click',()=>toggleDisplay('showResourceZones',refs.toggleResource));
-    refs.routeFab.addEventListener('click',openRouteSheet);refs.sheetBackdrop.addEventListener('click',()=>closeSheets());document.querySelectorAll('[data-close-sheet]').forEach(b=>b.addEventListener('click',()=>closeSheets()));bindSheetSwipe(refs.routeSheet);bindSheetSwipe(refs.placeSheet);
+    refs.sheetBackdrop.addEventListener('click',()=>closeSheets());document.querySelectorAll('[data-close-sheet]').forEach(b=>b.addEventListener('click',()=>closeSheets()));bindSheetSwipe(refs.routeSheet);bindSheetSwipe(refs.placeSheet);
     refs.addPointFromMap.addEventListener('click',()=>setRouteAddMode(true));refs.routeAddDone.addEventListener('click',()=>{if(state.routePoints.length>=2)state.routeGoalSet=true;setRouteAddMode(false);saveState();syncRouteUi();openRouteSheet();autoCalculateRoute();});refs.routeUndoQuick.addEventListener('click',()=>{if(state.routePoints.length){const removedGoal=state.routeGoalSet&&state.routePoints.length>=2;state.routePoints.pop();if(removedGoal||state.routePoints.length<2)state.routeGoalSet=false;afterRoutePointEdit();}});refs.routeClearQuick.addEventListener('click',()=>{state.routePoints=[];state.routeGoalSet=false;clearRouteResult();saveState();syncRouteUi();requestRender();});
     refs.clearRoute.addEventListener('click',()=>{state.routePoints=[];state.routeGoalSet=false;clearRouteResult();saveState();syncRouteUi();requestRender();});refs.calculateRoute.addEventListener('click',()=>calculateRoute(1));refs.showAlternate.addEventListener('click',()=>calculateRoute(3));
     refs.gateFilter.addEventListener('input',filterGateList);refs.clearBlocked.addEventListener('click',()=>{state.blockedGates=[];clearRouteResult();saveState();syncRouteUi();requestRender();if(state.routePoints.length>=2)autoCalculateRoute();});
