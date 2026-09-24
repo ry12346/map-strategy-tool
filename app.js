@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 21;
+  const APP_VERSION = 22;
   const PK2_WIDTH = 2000;
   const PK2_HEIGHT = 3250;
   const PK2_DISPLAY_WIDTH = 2595;
@@ -441,26 +441,51 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     let best=0,bestD=Infinity;rows.forEach((row,i)=>{const r=row.getBoundingClientRect(),d=Math.abs(clientY-(r.top+r.bottom)/2);if(d<bestD){bestD=d;best=i;}});return best;
   }
   function bindRoutePointReorder(row,index) {
-    row.addEventListener('pointerdown',e=>{
-      if(e.button!==undefined&&e.button!==0)return;if(e.target.closest('button'))return;if(routeReorder)return;
-      const startX=e.clientX,startY=e.clientY,pointerId=e.pointerId;let active=false,target=index;
-      const timer=setTimeout(()=>{active=true;routeReorder={index,target,pointerId};row.classList.add('reorder-active');try{row.setPointerCapture?.(pointerId);}catch{}navigator.vibrate?.(18);showToast('上下に動かして順番を変更');},380);
+    const handle=row.querySelector('.route-point-drag');
+    if(!handle)return;
+    const startReorder=e=>{
+      if(e.button!==undefined&&e.button!==0)return;
+      if(routeReorder)return;
+      // On touch devices the drag handle has touch-action:none. This prevents the
+      // browser's vertical sheet scroll from cancelling the pointer while dragging.
+      if(e.pointerType==='touch'&&!e.target.closest('.route-point-drag'))return;
+      e.stopPropagation();
+      const startX=e.clientX,startY=e.clientY,pointerId=e.pointerId;let active=false,target=index,timer=null;
+      const scrollBox=refs.routePointsList.closest('.sheet-scroll');
+      const activate=()=>{
+        active=true;routeReorder={index,target,pointerId};row.classList.add('reorder-active');handle.classList.add('reorder-grabbing');
+        try{handle.setPointerCapture?.(pointerId);}catch{}
+        navigator.vibrate?.(18);showToast('そのまま上下に動かして順番を変更');
+      };
+      timer=setTimeout(activate,320);
+      const autoScroll=clientY=>{
+        if(!scrollBox)return;
+        const r=scrollBox.getBoundingClientRect(),edge=54;
+        if(clientY<r.top+edge)scrollBox.scrollTop-=Math.min(14,(r.top+edge-clientY)*.35);
+        else if(clientY>r.bottom-edge)scrollBox.scrollTop+=Math.min(14,(clientY-(r.bottom-edge))*.35);
+      };
       const move=ev=>{
         if(ev.pointerId!==pointerId)return;
-        if(!active){if(Math.hypot(ev.clientX-startX,ev.clientY-startY)>10)clearTimeout(timer);return;}
-        ev.preventDefault();target=reorderTargetIndex(ev.clientY);routeReorder.target=target;clearReorderTargets();row.classList.add('reorder-active');const rows=[...refs.routePointsList.querySelectorAll('.route-point-row')];rows[target]?.classList.add('reorder-target');
+        if(!active){if(Math.hypot(ev.clientX-startX,ev.clientY-startY)>9){clearTimeout(timer);timer=null;}return;}
+        ev.preventDefault();autoScroll(ev.clientY);target=reorderTargetIndex(ev.clientY);routeReorder.target=target;clearReorderTargets();row.classList.add('reorder-active');handle.classList.add('reorder-grabbing');const rows=[...refs.routePointsList.querySelectorAll('.route-point-row')];rows[target]?.classList.add('reorder-target');
       };
       const finish=ev=>{
-        if(ev.pointerId!==pointerId)return;clearTimeout(timer);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',finish);
-        clearReorderTargets();routeReorder=null;
+        if(ev.pointerId!==pointerId)return;if(timer)clearTimeout(timer);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',finish);
+        try{handle.releasePointerCapture?.(pointerId);}catch{}
+        clearReorderTargets();handle.classList.remove('reorder-grabbing');routeReorder=null;
         if(active&&target!==index&&state.routePoints[index]){const [point]=state.routePoints.splice(index,1);state.routePoints.splice(target,0,point);afterRoutePointEdit(true);}
       };
       window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',finish);window.addEventListener('pointercancel',finish);
-    });
+    };
+    handle.addEventListener('pointerdown',startReorder);
+    // Mouse/pen users can also long-press anywhere on the row. Touch stays on the
+    // dedicated handle so the rest of the row remains vertically scrollable.
+    row.addEventListener('pointerdown',e=>{if(e.pointerType!=='touch'&&!e.target.closest('button,.route-point-drag'))startReorder(e);});
   }
   function syncRouteUi() {
     refs.routePointsList.innerHTML='';
     if(!state.routePoints.length){refs.routePointsList.innerHTML='<div class="route-point-empty">城・関所または通行可能な地点を指定します。<br>「地図から追加」でも追加できます。</div>';}
+    if(state.routePoints.length>1){const hint=document.createElement('div');hint.className='route-reorder-hint';hint.textContent='≡ を長押しして上下に移動すると順番を変更できます';refs.routePointsList.appendChild(hint);}
     state.routePoints.forEach((p,i)=>{
       const row=document.createElement('div');row.className='route-point-row';row.dataset.index=String(i);
       const place=routePointPlace(p),role=i===0?'出発':(state.routeGoalSet&&i===state.routePoints.length-1&&i>0?'到着':'経由'),title=place?placeDisplayName(place):`地点 ${p[0]},${p[1]}`;
