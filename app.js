@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 19;
+  const APP_VERSION = 20;
   const PK2_WIDTH = 2000;
   const PK2_HEIGHT = 3250;
   const PK2_DISPLAY_WIDTH = 2595;
@@ -10,7 +10,6 @@
   const MAX_ZOOM = 10;
   const TAP_MOVE_PX = 9;
   const PK2_DISPLAY_TRANSFORM = { m00:1.2761893137143974, m01:-1.1086900344981845, m10:0.6801900753291124, m11:0.5251276563399424, tx:1815.506342488914, ty:-559.1567323436, im00:0.368696339593132, im01:0.7784201660829038, im10:-0.47756690772933746, im11:0.8960227535412332 };
-  const RESOURCE_ZONES = [{id:'north',name:'北側資源州',province_name:'筑後・日向',label_x:1065.2,label_y:1523.4},{id:'south',name:'南側資源州',province_name:'肥後・日向',label_x:994.3,label_y:1789.2}];
   const RESOURCE_ZONE_BOUNDARY_GATE_IDS = new Set([126,127,128,129,131,132,133,136,137,138,139,142,143]);
   const PK2_ROUTE_WORKER_SOURCE = String.raw`
 const W=2000,H=3250,N=W*H;
@@ -76,9 +75,9 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   const refs = {
     stage: $('mapStage'), canvas: $('mapCanvas'), fitBtn: $('fitBtn'), helpBtn: $('helpBtn'), helpDialog: $('helpDialog'),
     search: $('placeSearch'), searchClear: $('searchClearBtn'), searchResults: $('searchResults'),
-    toggleCity: $('toggleCityNames'), toggleGate: $('toggleGateNames'), toggleResource: $('toggleResourceZones'), resourceLegend: $('resourceLegend'),
+    toggleCity: $('toggleCityNames'), toggleGate: $('toggleGateNames'), toggleResource: $('toggleResourceZones'),
     routeFab: $('routeFab'), routeBadge: $('routePointBadge'), routeSheet: $('routeSheet'), sheetBackdrop: $('sheetBackdrop'),
-    routePointsList: $('routePointsList'), addPointFromMap: $('addPointFromMapBtn'), clearRoute: $('clearRouteBtn'), allowSea: $('allowSeaRoutes'),
+    routePointsList: $('routePointsList'), addPointFromMap: $('addPointFromMapBtn'), clearRoute: $('clearRouteBtn'),
     calculateRoute: $('calculateRouteBtn'), routeResult: $('routeResult'), showAlternate: $('showAlternateRoutesBtn'),
     gateFilter: $('gateFilter'), gateBlockList: $('gateBlockList'), clearBlocked: $('clearBlockedGatesBtn'), blockedGateCount: $('blockedGateCount'),
     routeAddBanner: $('routeAddBanner'), routeUndoQuick: $('routeUndoQuickBtn'), routeAddDone: $('routeAddDoneBtn'),
@@ -96,6 +95,23 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     ...gates.map(o => ({...o, _kind:'gate'}))
   ];
   const placeByKey = new Map(places.map(p => [`${p._kind}:${p.id}`, p]));
+  const passableMainBits = data.passableLandB64 ? decodeBase64Bytes(data.passableLandB64) : new Uint8Array(0);
+  const seaRouteMain = new Set();
+  if(Array.isArray(data.seaRouteRuns)) {
+    for(let k=0;k+1<data.seaRouteRuns.length;k+=2) {
+      const start=Number(data.seaRouteRuns[k])||0, len=Number(data.seaRouteRuns[k+1])||0;
+      for(let i=start,end=Math.min(PK2_WIDTH*PK2_HEIGHT,start+len);i<end;i++) seaRouteMain.add(i);
+    }
+  }
+
+  function mainBitOn(bits,index) { return !!bits.length && index>=0 && index<PK2_WIDTH*PK2_HEIGHT && ((bits[index>>3]>>(index&7))&1)!==0; }
+  function isPassableGamePoint(x,y) {
+    x=Math.round(Number(x));y=Math.round(Number(y));
+    if(x<0||x>=PK2_WIDTH||y<0||y>=PK2_HEIGHT)return false;
+    const idx=y*PK2_WIDTH+x;
+    return mainBitOn(passableMainBits,idx)||seaRouteMain.has(idx);
+  }
+  function mapPointObject(x,y) { return {_kind:'point',id:`point:${x},${y}`,name:'地点',center_x:x,center_y:y,level:0,province_names:''}; }
 
   const mapImage = new Image();
   const zoneImage = new Image();
@@ -110,6 +126,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   let requestSeq = 0;
   let selectedPlace = null;
   let routeAddMode = false;
+  let pendingAutoRoute = false;
+  let routeReorder = null;
   let lastGamePosition = null;
   let searchMatches = [];
   let toastTimer = 0;
@@ -126,7 +144,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   let gesture = null;
 
   function loadState() {
-    const base = { showCityNames:true, showGateNames:true, showResourceZones:false, allowSea:true, routePoints:[], blockedGates:[] };
+    const base = { showCityNames:true, showGateNames:true, showResourceZones:false, routePoints:[], blockedGates:[] };
     try {
       const saved = JSON.parse(localStorage.getItem('pk2-mobile-state') || 'null');
       return Object.assign(base, saved && typeof saved === 'object' ? saved : {});
@@ -136,7 +154,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     try {
       localStorage.setItem('pk2-mobile-state', JSON.stringify({
         showCityNames:state.showCityNames, showGateNames:state.showGateNames, showResourceZones:state.showResourceZones,
-        allowSea:state.allowSea, routePoints:state.routePoints, blockedGates:state.blockedGates
+        routePoints:state.routePoints, blockedGates:state.blockedGates
       }));
     } catch {}
   }
@@ -144,8 +162,12 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   function clamp(v,a,b) { return Math.max(a, Math.min(b, v)); }
   function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
   function gateDisplayName(g) { return `${g.name}${Number(g.level) ? ` Lv.${g.level}` : ''}`; }
-  function placeDisplayName(p) { return p._kind === 'gate' ? gateDisplayName(p) : p.name; }
+  function placeDisplayName(p) {
+    if(p._kind === 'point') return `地点 ${p.center_x},${p.center_y}`;
+    return p._kind === 'gate' ? gateDisplayName(p) : p.name;
+  }
   function placeMetaText(p) {
+    if(p._kind === 'point') return `通行可能 ・ ${p.center_x},${p.center_y}`;
     const province = p.province_names || '';
     const level = p._kind === 'city' && Number(p.level) ? `Lv.${p.level}` : '';
     return [p._kind === 'gate' ? '関所' : '城', level, province, `${p.center_x},${p.center_y}`].filter(Boolean).join(' ・ ');
@@ -220,7 +242,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
       const p=gameToWorld(Number(g.center_x),Number(g.center_y)), r=radiusGate;
       ctx.save();ctx.translate(p.x,p.y);ctx.rotate(Math.PI/4);ctx.fillStyle='#c5851d';ctx.fillRect(-r*.75,-r*.75,r*1.5,r*1.5);ctx.strokeStyle='#ffe0a0';ctx.lineWidth=Math.max(.7,1/view.scale);ctx.strokeRect(-r*.75,-r*.75,r*1.5,r*1.5);ctx.restore();
     }
-    if(state.showResourceZones) drawResourceZoneLabelsAndBoundaryGates();
+    if(state.showResourceZones) drawResourceZoneBoundaryGates();
     const items=[];
     if(state.showGateNames) for(const g of gates) if(labelVisibilityThreshold(g)) items.push({o:g,kind:'gate',text:gateDisplayName(g),priority:2000+Number(g.level||0)});
     if(state.showCityNames) for(const c of cities) if(labelVisibilityThreshold(c)) items.push({o:c,kind:'city',text:c.name,priority:1000+Number(c.level||0)});
@@ -242,16 +264,12 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     }
     ctx.restore();
   }
-  function drawResourceZoneLabelsAndBoundaryGates() {
-    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
-    for(const zone of RESOURCE_ZONES) {
-      const p=gameToWorld(zone.label_x,zone.label_y), fs=Math.max(13,18/view.scale), line=Math.max(10,12/view.scale);
-      ctx.font=`900 ${fs}px system-ui, "Noto Sans JP",sans-serif`;ctx.lineWidth=4/view.scale;ctx.strokeStyle='rgba(10,17,23,.9)';ctx.strokeText(zone.name,p.x,p.y-line*.45);ctx.fillStyle=zone.id==='north'?'#9bd0ff':'#ffc181';ctx.fillText(zone.name,p.x,p.y-line*.45);
-      ctx.font=`700 ${Math.max(9,11/view.scale)}px system-ui, "Noto Sans JP",sans-serif`;ctx.strokeText(zone.province_name,p.x,p.y+line*.65);ctx.fillStyle='#fff';ctx.fillText(zone.province_name,p.x,p.y+line*.65);
-    }
+  function drawResourceZoneBoundaryGates() {
+    ctx.save();
     for(const g of gates) if(RESOURCE_ZONE_BOUNDARY_GATE_IDS.has(Number(g.id))) {
       const p=gameToWorld(Number(g.center_x),Number(g.center_y)), r=Math.max(6,9/view.scale);
-      ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.strokeStyle='#ffdf43';ctx.lineWidth=Math.max(1.5,2.8/view.scale);ctx.stroke();ctx.beginPath();ctx.arc(p.x,p.y,r*1.45,0,Math.PI*2);ctx.strokeStyle='rgba(255,223,67,.75)';ctx.lineWidth=Math.max(1,1.5/view.scale);ctx.stroke();
+      ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.strokeStyle='#ffdf43';ctx.lineWidth=Math.max(1.5,2.8/view.scale);ctx.stroke();
+      ctx.beginPath();ctx.arc(p.x,p.y,r*1.45,0,Math.PI*2);ctx.strokeStyle='rgba(255,223,67,.75)';ctx.lineWidth=Math.max(1,1.5/view.scale);ctx.stroke();
     }
     ctx.restore();
   }
@@ -315,8 +333,19 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   }
   function handleMapTap(cx,cy) {
     updateCoordinateFromClient(cx,cy);
-    if(routeAddMode){ if(lastGamePosition){state.routePoints.push([...lastGamePosition]);clearRouteResult();saveState();syncRouteUi();requestRender();showToast(`経路点 ${state.routePoints.length} を追加しました`);} return; }
-    const place=nearestPlaceAtClient(cx,cy); if(place) openPlaceSheet(place);
+    if(routeAddMode){
+      if(!lastGamePosition)return;
+      const [x,y]=lastGamePosition;
+      if(!isPassableGamePoint(x,y)){showToast('この地点は通行できません',true);return;}
+      state.routePoints.push([x,y]);clearRouteResult();saveState();syncRouteUi();requestRender();showToast(`経路点 ${state.routePoints.length} を追加しました`);return;
+    }
+    const place=nearestPlaceAtClient(cx,cy);
+    if(place){openPlaceSheet(place);return;}
+    if(lastGamePosition){
+      const [x,y]=lastGamePosition;
+      if(isPassableGamePoint(x,y))openPlaceSheet(mapPointObject(x,y));
+      else showToast('この地点は通行できません',true);
+    }
   }
 
   function searchPlaces(query) {
@@ -335,8 +364,15 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     const w=gameToWorld(Number(p.center_x),Number(p.center_y)),r=refs.canvas.getBoundingClientRect();view.scale=Math.max(view.scale,.8);view.x=r.width/2-w.x*view.scale;view.y=r.height/2-w.y*view.scale;requestRender();
   }
 
-  function openSheet(sheet) { closeSheets(false);refs.sheetBackdrop.hidden=false;sheet.hidden=false; }
-  function closeSheets(hideBackdrop=true) { refs.routeSheet.hidden=true;refs.placeSheet.hidden=true;if(hideBackdrop)refs.sheetBackdrop.hidden=true; }
+  function resetSheetDrag(sheet) {
+    if(!sheet)return;sheet.style.removeProperty('--sheet-drag-y');sheet.classList.remove('sheet-dragging');
+    refs.sheetBackdrop.style.removeProperty('opacity');
+  }
+  function openSheet(sheet) { closeSheets(false);resetSheetDrag(sheet);refs.sheetBackdrop.hidden=false;sheet.hidden=false; }
+  function closeSheets(hideBackdrop=true) {
+    resetSheetDrag(refs.routeSheet);resetSheetDrag(refs.placeSheet);
+    refs.routeSheet.hidden=true;refs.placeSheet.hidden=true;if(hideBackdrop)refs.sheetBackdrop.hidden=true;
+  }
   function openRouteSheet() { syncRouteUi();openSheet(refs.routeSheet); }
   function openPlaceSheet(p) {
     selectedPlace=p;refs.placeTitle.textContent=placeDisplayName(p);refs.placeMeta.textContent=placeMetaText(p);refs.placeCopyCoord.textContent=`${p.center_x},${p.center_y}`;refs.placeBlockGate.hidden=p._kind!=='gate';
@@ -345,30 +381,75 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   }
 
   function placeRoutePoint(p) { return [Math.round(Number(p.center_x)),Math.round(Number(p.center_y))]; }
-  function setStartFromPlace() { if(!selectedPlace)return;const p=placeRoutePoint(selectedPlace);if(state.routePoints.length)state.routePoints[0]=p;else state.routePoints=[p];afterRoutePointEdit();openRouteSheet(); }
-  function setGoalFromPlace() { if(!selectedPlace)return;const p=placeRoutePoint(selectedPlace);if(!state.routePoints.length)state.routePoints=[p];else if(state.routePoints.length===1)state.routePoints.push(p);else state.routePoints[state.routePoints.length-1]=p;afterRoutePointEdit();openRouteSheet(); }
-  function addViaFromPlace() { if(!selectedPlace)return;const p=placeRoutePoint(selectedPlace);if(state.routePoints.length<2)state.routePoints.push(p);else state.routePoints.splice(state.routePoints.length-1,0,p);afterRoutePointEdit();openRouteSheet(); }
-  function afterRoutePointEdit() {clearRouteResult();saveState();syncRouteUi();requestRender();}
+  function autoCalculateRoute() {
+    if(state.routePoints.length<2)return;
+    if(routeBusy){pendingAutoRoute=true;return;}
+    if(routeWorkerReady){pendingAutoRoute=false;calculateRoute(1);}
+    else pendingAutoRoute=true;
+  }
+  function setStartFromPlace() {
+    if(!selectedPlace)return;const p=placeRoutePoint(selectedPlace);if(state.routePoints.length)state.routePoints[0]=p;else state.routePoints=[p];
+    closeSheets();afterRoutePointEdit(true);
+  }
+  function setGoalFromPlace() {
+    if(!selectedPlace)return;const p=placeRoutePoint(selectedPlace);if(!state.routePoints.length)state.routePoints=[p];else if(state.routePoints.length===1)state.routePoints.push(p);else state.routePoints[state.routePoints.length-1]=p;
+    closeSheets();afterRoutePointEdit(true);
+  }
+  function addViaFromPlace() {
+    if(!selectedPlace)return;const p=placeRoutePoint(selectedPlace);if(state.routePoints.length<2)state.routePoints.push(p);else state.routePoints.splice(state.routePoints.length-1,0,p);
+    closeSheets();afterRoutePointEdit(true);
+  }
+  function afterRoutePointEdit(autoRoute=false) {
+    clearRouteResult();saveState();syncRouteUi();requestRender();if(autoRoute)autoCalculateRoute();
+  }
   function clearRouteResult() {state.routePath=[];state.altPaths=[];state.routeResult=null;state.showAlternates=false;}
 
   function routePointPlace(point) {
     let best=null,bestD=2.5;for(const p of places){const d=Math.hypot(Number(p.center_x)-point[0],Number(p.center_y)-point[1]);if(d<bestD){best=p;bestD=d;}}return best;
   }
+  function clearReorderTargets() { for(const row of refs.routePointsList.querySelectorAll('.route-point-row')) row.classList.remove('reorder-target','reorder-active'); }
+  function reorderTargetIndex(clientY) {
+    const rows=[...refs.routePointsList.querySelectorAll('.route-point-row')];if(!rows.length)return 0;
+    let best=0,bestD=Infinity;rows.forEach((row,i)=>{const r=row.getBoundingClientRect(),d=Math.abs(clientY-(r.top+r.bottom)/2);if(d<bestD){bestD=d;best=i;}});return best;
+  }
+  function bindRoutePointReorder(row,index) {
+    row.addEventListener('pointerdown',e=>{
+      if(e.button!==undefined&&e.button!==0)return;if(e.target.closest('button'))return;if(routeReorder)return;
+      const startX=e.clientX,startY=e.clientY,pointerId=e.pointerId;let active=false,target=index;
+      const timer=setTimeout(()=>{active=true;routeReorder={index,target,pointerId};row.classList.add('reorder-active');try{row.setPointerCapture?.(pointerId);}catch{}navigator.vibrate?.(18);showToast('上下に動かして順番を変更');},380);
+      const move=ev=>{
+        if(ev.pointerId!==pointerId)return;
+        if(!active){if(Math.hypot(ev.clientX-startX,ev.clientY-startY)>10)clearTimeout(timer);return;}
+        ev.preventDefault();target=reorderTargetIndex(ev.clientY);routeReorder.target=target;clearReorderTargets();row.classList.add('reorder-active');const rows=[...refs.routePointsList.querySelectorAll('.route-point-row')];rows[target]?.classList.add('reorder-target');
+      };
+      const finish=ev=>{
+        if(ev.pointerId!==pointerId)return;clearTimeout(timer);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',finish);
+        clearReorderTargets();routeReorder=null;
+        if(active&&target!==index&&state.routePoints[index]){const [point]=state.routePoints.splice(index,1);state.routePoints.splice(target,0,point);afterRoutePointEdit(true);}
+      };
+      window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',finish);window.addEventListener('pointercancel',finish);
+    });
+  }
   function syncRouteUi() {
     refs.routePointsList.innerHTML='';
-    if(!state.routePoints.length){refs.routePointsList.innerHTML='<div class="route-point-empty">城・関所の「ここから／ここまで」か、<br>「地図から追加」で地点を指定します。</div>';}
-    state.routePoints.forEach((p,i)=>{const row=document.createElement('div');row.className='route-point-row';const place=routePointPlace(p);const role=i===0?'出発':(i===state.routePoints.length-1&&i>0?'到着':'経由');row.innerHTML=`<span class="route-point-index">${i+1}</span><span class="route-point-info"><b>${escapeHtml(place?placeDisplayName(place):role)}</b><small>${role} ・ ${p[0]},${p[1]}</small></span><button class="route-point-remove" type="button" aria-label="削除">×</button>`;row.querySelector('button').addEventListener('click',()=>{state.routePoints.splice(i,1);afterRoutePointEdit();});refs.routePointsList.appendChild(row);});
-    refs.allowSea.checked=state.allowSea!==false;refs.blockedGateCount.textContent=String(state.blockedGates.length);refs.routeBadge.hidden=!state.routePoints.length;refs.routeBadge.textContent=String(state.routePoints.length);refs.showAlternate.hidden=!(state.routeResult&&state.routeResult.status==='ok'&&!state.showAlternates);
+    if(!state.routePoints.length){refs.routePointsList.innerHTML='<div class="route-point-empty">城・関所または通行可能な地点を指定します。<br>「地図から追加」でも追加できます。</div>';}
+    state.routePoints.forEach((p,i)=>{
+      const row=document.createElement('div');row.className='route-point-row';row.dataset.index=String(i);
+      const place=routePointPlace(p),role=i===0?'出発':(i===state.routePoints.length-1&&i>0?'到着':'経由'),title=place?placeDisplayName(place):`地点 ${p[0]},${p[1]}`;
+      row.innerHTML=`<span class="route-point-index">${i+1}</span><span class="route-point-info"><b>${escapeHtml(title)}</b><small>${role} ・ ${p[0]},${p[1]}</small></span><span class="route-point-drag" aria-hidden="true">≡</span><button class="route-point-remove" type="button" aria-label="削除">×</button>`;
+      row.querySelector('button').addEventListener('click',()=>{state.routePoints.splice(i,1);afterRoutePointEdit(state.routePoints.length>=2);});bindRoutePointReorder(row,i);refs.routePointsList.appendChild(row);
+    });
+    refs.blockedGateCount.textContent=String(state.blockedGates.length);refs.routeBadge.hidden=!state.routePoints.length;refs.routeBadge.textContent=String(state.routePoints.length);refs.showAlternate.hidden=!(state.routeResult&&state.routeResult.status==='ok'&&!state.showAlternates);
     syncBlockedGates();renderRouteResult();
   }
-  function populateGateList() { refs.gateBlockList.innerHTML='';for(const g of gates.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),'ja'))){const label=document.createElement('label');label.className='gate-block-item';label.dataset.label=`${gateDisplayName(g)} ${g.province_names||''}`.toLowerCase();label.innerHTML=`<input type="checkbox" data-id="${g.id}"><span>${escapeHtml(gateDisplayName(g))}</span><small>${escapeHtml(g.province_names||'')}</small>`;label.querySelector('input').addEventListener('change',e=>{const id=Number(e.target.dataset.id);if(e.target.checked){if(!state.blockedGates.includes(id))state.blockedGates.push(id);}else state.blockedGates=state.blockedGates.filter(v=>v!==id);clearRouteResult();saveState();syncRouteUi();requestRender();});refs.gateBlockList.appendChild(label);} }
+  function populateGateList() { refs.gateBlockList.innerHTML='';for(const g of gates.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),'ja'))){const label=document.createElement('label');label.className='gate-block-item';label.dataset.label=`${gateDisplayName(g)} ${g.province_names||''}`.toLowerCase();label.innerHTML=`<input type="checkbox" data-id="${g.id}"><span>${escapeHtml(gateDisplayName(g))}</span><small>${escapeHtml(g.province_names||'')}</small>`;label.querySelector('input').addEventListener('change',e=>{const id=Number(e.target.dataset.id);if(e.target.checked){if(!state.blockedGates.includes(id))state.blockedGates.push(id);}else state.blockedGates=state.blockedGates.filter(v=>v!==id);clearRouteResult();saveState();syncRouteUi();requestRender();if(state.routePoints.length>=2)autoCalculateRoute();});refs.gateBlockList.appendChild(label);} }
   function syncBlockedGates() { for(const cb of refs.gateBlockList.querySelectorAll('input[type="checkbox"]'))cb.checked=state.blockedGates.includes(Number(cb.dataset.id)); }
   function filterGateList() { const q=refs.gateFilter.value.trim().toLowerCase();for(const item of refs.gateBlockList.querySelectorAll('.gate-block-item'))item.style.display=!q||item.dataset.label.includes(q)?'flex':'none'; }
 
   function initRouteWorker() {
     if(!data.passableLandB64){refs.loadingBadge.textContent='経路データがありません';return;}
     const url=URL.createObjectURL(new Blob([PK2_ROUTE_WORKER_SOURCE],{type:'text/javascript'}));routeWorker=new Worker(url);
-    routeWorker.onmessage=e=>{const m=e.data||{};if(m.type==='ready'){routeWorkerReady=true;refs.loadingBadge.hidden=true;return;}if(m.type==='result')handleRouteResult(m);};
+    routeWorker.onmessage=e=>{const m=e.data||{};if(m.type==='ready'){routeWorkerReady=true;refs.loadingBadge.hidden=true;if(pendingAutoRoute){pendingAutoRoute=false;calculateRoute(1);}return;}if(m.type==='result')handleRouteResult(m);};
     routeWorker.onerror=e=>{routeWorkerReady=false;routeBusy=false;refs.loadingBadge.textContent='経路データ初期化エラー';refs.calculateRoute.disabled=false;console.error(e);};
     const bits=decodeBase64Bytes(data.passableLandB64),stationRuns=new Uint32Array(Array.isArray(data.stationRoadRuns)?data.stationRoadRuns:[]),seaRuns=new Uint32Array(Array.isArray(data.seaRouteRuns)?data.seaRouteRuns:[]);
     routeWorker.postMessage({type:'init',buffer:bits.buffer,stationRuns:stationRuns.buffer,seaRuns:seaRuns.buffer},[bits.buffer,stationRuns.buffer,seaRuns.buffer]);
@@ -376,11 +457,12 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   function decodeBase64Bytes(text) {const bin=atob(text),out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out;}
   function calculateRoute(routeCount=1) {
     if(routeBusy)return;if(state.routePoints.length<2){showToast('開始地点と到着地点を指定してください',true);return;}if(!routeWorkerReady){showToast('経路データを準備中です',true);return;}
-    routeBusy=true;refs.calculateRoute.disabled=true;refs.calculateRoute.textContent='探索中…';state.showAlternates=routeCount>1;
-    routeWorker.postMessage({type:'route',requestId:++requestSeq,points:state.routePoints,blockedGateIds:state.blockedGates,gates,routeCount,allowSea:state.allowSea!==false,maxExpand:3000000});
+    routeBusy=true;refs.calculateRoute.disabled=true;refs.calculateRoute.textContent='探索中…';refs.routeResult.innerHTML='<p>経路を探索中…</p>';state.showAlternates=routeCount>1;
+    routeWorker.postMessage({type:'route',requestId:++requestSeq,points:state.routePoints,blockedGateIds:state.blockedGates,gates,routeCount,allowSea:true,maxExpand:3000000});
   }
   function handleRouteResult(m) {
     routeBusy=false;refs.calculateRoute.disabled=false;refs.calculateRoute.textContent='経路を表示';
+    if(pendingAutoRoute){pendingAutoRoute=false;calculateRoute(1);return;}
     if(m.status!=='ok'){state.routePath=[];state.altPaths=[];state.routeResult={status:m.status||'error'};renderRouteResult();requestRender();return;}
     const routes=Array.isArray(m.routes)?m.routes:[],first=routes[0]||{};state.routePath=Array.from(first.path||[]);state.altPaths=routes.slice(1,3).map(r=>Array.from(r.path||[]));
     const crossed=[];for(const g of gates){const xmin=Number(g.xmin),xmax=Number(g.xmax),ymin=Number(g.ymin),ymax=Number(g.ymax);if(state.routePath.some(idx=>{const x=idx%PK2_WIDTH,y=Math.floor(idx/PK2_WIDTH);return x>=xmin&&x<=xmax&&y>=ymin&&y<=ymax;}))crossed.push(Number(g.id));}
@@ -391,7 +473,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     if(r.status!=='ok'){const labels={outside:'マップ範囲外です',start_blocked:'開始点が通行不可です',goal_blocked:'終点が通行不可です',no_path:'到達できる経路がありません',max_expand:'探索上限に達しました',error:'経路計算エラー'};refs.routeResult.innerHTML=`<p>${escapeHtml(labels[r.status]||r.status)}</p>`;return;}
     const crossed=(r.crossedGates||[]).map(id=>{const g=gates.find(x=>Number(x.id)===Number(id));return g?gateDisplayName(g):String(id);});const blocked=state.blockedGates.map(id=>{const g=gates.find(x=>Number(x.id)===Number(id));return g?gateDisplayName(g):String(id);});
     let alt='';if(state.showAlternates&&Array.isArray(r.alternatives)&&r.alternatives.length)alt='<div class="alt-route-line">'+r.alternatives.map((a,i)=>`候補${i+2}：${a.steps}マス${a.seaCells?`（海上 ${a.seaCells}）`:''}`).join('<br>')+'</div>';
-    refs.routeResult.innerHTML=`<div class="route-main">最短 ${r.totalSteps} マス</div><dl><dt>海上航路</dt><dd>${state.allowSea===false?'使用しない':(r.seaCells?`${r.seaCells}マス`:'未使用')}</dd><dt>通過関所</dt><dd>${crossed.length?escapeHtml(crossed.join('、')):'-'}</dd><dt>遮断関所</dt><dd>${blocked.length?escapeHtml(blocked.join('、')):'-'}</dd></dl>${alt}`;
+    refs.routeResult.innerHTML=`<div class="route-main">最短 ${r.totalSteps} マス</div><dl><dt>海上航路</dt><dd>${r.seaCells?`${r.seaCells}マス`:'未使用'}</dd><dt>通過関所</dt><dd>${crossed.length?escapeHtml(crossed.join('、')):'-'}</dd><dt>遮断関所</dt><dd>${blocked.length?escapeHtml(blocked.join('、')):'-'}</dd></dl>${alt}`;
   }
 
   async function copyText(text) {
@@ -400,7 +482,25 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   function showToast(message,error=false) {clearTimeout(toastTimer);refs.toast.textContent=message;refs.toast.classList.toggle('error',error);refs.toast.classList.add('show');toastTimer=setTimeout(()=>refs.toast.classList.remove('show'),2200);}
 
   function setRouteAddMode(on) {routeAddMode=!!on;refs.routeAddBanner.hidden=!routeAddMode;refs.routeFab.hidden=routeAddMode;refs.coordinatePill.hidden=routeAddMode;if(routeAddMode)closeSheets();requestRender();}
-  function toggleDisplay(key,button) {state[key]=!state[key];button.classList.toggle('active',state[key]);button.setAttribute('aria-pressed',String(state[key]));if(key==='showResourceZones')refs.resourceLegend.hidden=!state[key];saveState();requestRender();}
+  function toggleDisplay(key,button) {state[key]=!state[key];button.classList.toggle('active',state[key]);button.setAttribute('aria-pressed',String(state[key]));saveState();requestRender();}
+
+  function bindSheetSwipe(sheet) {
+    sheet.addEventListener('pointerdown',e=>{
+      if(e.button!==undefined&&e.button!==0)return;
+      if(e.target.closest('button,input,summary,details,.sheet-scroll'))return;
+      if(!e.target.closest('.sheet-grabber,.sheet-header'))return;
+      const pointerId=e.pointerId,startY=e.clientY;let dy=0,active=false;
+      const move=ev=>{
+        if(ev.pointerId!==pointerId)return;dy=Math.max(0,ev.clientY-startY);
+        if(dy>5)active=true;if(!active)return;ev.preventDefault();sheet.classList.add('sheet-dragging');sheet.style.setProperty('--sheet-drag-y',`${dy}px`);refs.sheetBackdrop.style.opacity=String(Math.max(0,1-dy/260));
+      };
+      const finish=ev=>{
+        if(ev.pointerId!==pointerId)return;window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',finish);window.removeEventListener('pointercancel',finish);
+        if(active&&dy>85)closeSheets();else resetSheetDrag(sheet);
+      };
+      window.addEventListener('pointermove',move,{passive:false});window.addEventListener('pointerup',finish);window.addEventListener('pointercancel',finish);
+    });
+  }
 
   function bindEvents() {
     refs.canvas.addEventListener('pointerdown',onPointerDown);refs.canvas.addEventListener('pointermove',onPointerMove);refs.canvas.addEventListener('pointerup',onPointerUp);refs.canvas.addEventListener('pointercancel',onPointerUp);
@@ -410,17 +510,17 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     refs.searchClear.addEventListener('click',()=>{refs.search.value='';updateSearchResults();refs.search.focus();});
     document.addEventListener('pointerdown',e=>{if(!e.target.closest('.search-panel'))refs.searchResults.hidden=true;},true);
     refs.toggleCity.addEventListener('click',()=>toggleDisplay('showCityNames',refs.toggleCity));refs.toggleGate.addEventListener('click',()=>toggleDisplay('showGateNames',refs.toggleGate));refs.toggleResource.addEventListener('click',()=>toggleDisplay('showResourceZones',refs.toggleResource));
-    refs.routeFab.addEventListener('click',openRouteSheet);refs.sheetBackdrop.addEventListener('click',()=>closeSheets());document.querySelectorAll('[data-close-sheet]').forEach(b=>b.addEventListener('click',()=>closeSheets()));
-    refs.addPointFromMap.addEventListener('click',()=>setRouteAddMode(true));refs.routeAddDone.addEventListener('click',()=>{setRouteAddMode(false);openRouteSheet();});refs.routeUndoQuick.addEventListener('click',()=>{if(state.routePoints.length){state.routePoints.pop();afterRoutePointEdit();}});
-    refs.clearRoute.addEventListener('click',()=>{state.routePoints=[];clearRouteResult();saveState();syncRouteUi();requestRender();});refs.allowSea.addEventListener('change',()=>{state.allowSea=refs.allowSea.checked;clearRouteResult();saveState();syncRouteUi();requestRender();});refs.calculateRoute.addEventListener('click',()=>calculateRoute(1));refs.showAlternate.addEventListener('click',()=>calculateRoute(3));
-    refs.gateFilter.addEventListener('input',filterGateList);refs.clearBlocked.addEventListener('click',()=>{state.blockedGates=[];clearRouteResult();saveState();syncRouteUi();requestRender();});
-    refs.placeStart.addEventListener('click',setStartFromPlace);refs.placeGoal.addEventListener('click',setGoalFromPlace);refs.placeVia.addEventListener('click',addViaFromPlace);refs.placeCopy.addEventListener('click',()=>selectedPlace&&copyText(`${selectedPlace.center_x},${selectedPlace.center_y}`));refs.placeBlockGate.addEventListener('click',()=>{if(!selectedPlace||selectedPlace._kind!=='gate')return;const id=Number(selectedPlace.id);if(state.blockedGates.includes(id))state.blockedGates=state.blockedGates.filter(v=>v!==id);else state.blockedGates.push(id);clearRouteResult();saveState();openPlaceSheet(selectedPlace);syncRouteUi();requestRender();});
+    refs.routeFab.addEventListener('click',openRouteSheet);refs.sheetBackdrop.addEventListener('click',()=>closeSheets());document.querySelectorAll('[data-close-sheet]').forEach(b=>b.addEventListener('click',()=>closeSheets()));bindSheetSwipe(refs.routeSheet);bindSheetSwipe(refs.placeSheet);
+    refs.addPointFromMap.addEventListener('click',()=>setRouteAddMode(true));refs.routeAddDone.addEventListener('click',()=>{setRouteAddMode(false);openRouteSheet();autoCalculateRoute();});refs.routeUndoQuick.addEventListener('click',()=>{if(state.routePoints.length){state.routePoints.pop();afterRoutePointEdit();}});
+    refs.clearRoute.addEventListener('click',()=>{state.routePoints=[];clearRouteResult();saveState();syncRouteUi();requestRender();});refs.calculateRoute.addEventListener('click',()=>calculateRoute(1));refs.showAlternate.addEventListener('click',()=>calculateRoute(3));
+    refs.gateFilter.addEventListener('input',filterGateList);refs.clearBlocked.addEventListener('click',()=>{state.blockedGates=[];clearRouteResult();saveState();syncRouteUi();requestRender();if(state.routePoints.length>=2)autoCalculateRoute();});
+    refs.placeStart.addEventListener('click',setStartFromPlace);refs.placeGoal.addEventListener('click',setGoalFromPlace);refs.placeVia.addEventListener('click',addViaFromPlace);refs.placeCopy.addEventListener('click',()=>{if(!selectedPlace)return;const text=`${selectedPlace.center_x},${selectedPlace.center_y}`;closeSheets();copyText(text);});refs.placeBlockGate.addEventListener('click',()=>{if(!selectedPlace||selectedPlace._kind!=='gate')return;const id=Number(selectedPlace.id);if(state.blockedGates.includes(id))state.blockedGates=state.blockedGates.filter(v=>v!==id);else state.blockedGates.push(id);clearRouteResult();saveState();openPlaceSheet(selectedPlace);syncRouteUi();requestRender();if(state.routePoints.length>=2)autoCalculateRoute();});
     refs.coordinatePill.addEventListener('click',()=>{if(lastGamePosition)copyText(`${lastGamePosition[0]},${lastGamePosition[1]}`);});
     window.addEventListener('resize',()=>{resizeCanvas();});document.addEventListener('visibilitychange',()=>{if(!document.hidden)resizeCanvas();});
   }
 
   function initUi() {
-    refs.toggleCity.classList.toggle('active',state.showCityNames);refs.toggleCity.setAttribute('aria-pressed',String(state.showCityNames));refs.toggleGate.classList.toggle('active',state.showGateNames);refs.toggleGate.setAttribute('aria-pressed',String(state.showGateNames));refs.toggleResource.classList.toggle('active',state.showResourceZones);refs.toggleResource.setAttribute('aria-pressed',String(state.showResourceZones));refs.resourceLegend.hidden=!state.showResourceZones;refs.allowSea.checked=state.allowSea!==false;populateGateList();syncRouteUi();
+    refs.toggleCity.classList.toggle('active',state.showCityNames);refs.toggleCity.setAttribute('aria-pressed',String(state.showCityNames));refs.toggleGate.classList.toggle('active',state.showGateNames);refs.toggleGate.setAttribute('aria-pressed',String(state.showGateNames));refs.toggleResource.classList.toggle('active',state.showResourceZones);refs.toggleResource.setAttribute('aria-pressed',String(state.showResourceZones));populateGateList();syncRouteUi();
   }
 
   mapImage.onload=()=>{mapReady=true;resizeCanvas();fitView();requestRender();};mapImage.onerror=()=>showToast('マップ画像を読み込めませんでした',true);mapImage.src='map.png';
