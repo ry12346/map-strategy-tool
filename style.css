@@ -96,6 +96,17 @@ button { -webkit-tap-highlight-color: transparent; }
 .route-result { margin-top: 10px; padding: 11px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: #111820; color: #dfe6ed; font-size: 12px; }
 .route-result p { margin: 0; color: var(--muted); }
 .route-result .route-main { font-size: 18px; font-weight: 900; color: #fff; margin-bottom: 7px; }
+.route-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 9px; }
+.route-metric { min-width: 0; padding: 9px 10px; border-radius: 9px; background: #202934; }
+.route-metric > span { display: block; color: #c0cad5; font-size: 11px; }
+.route-metric > strong { display: block; margin-top: 3px; font-size: 22px; line-height: 1.25; color: #ff8981; }
+.route-metric.occupation > strong { color: #f2c16b; }
+.route-metric strong small { font-size: 11px; font-weight: 500; }
+.route-metric .route-capture-error { margin-top: 5px; color: #f2c16b; font-size: 11px; line-height: 1.45; }
+.route-kind-switch { display: flex; gap: 7px; margin-bottom: 8px; }
+.route-kind-switch button { flex: 1; min-height: 40px; border: 1px solid #475467; border-radius: 8px; background: #202934; color: #dce4ef; font: inherit; cursor: pointer; }
+.route-kind-switch button[aria-pressed="true"] { border-color: #dce4ef; background: #354457; color: white; font-weight: 700; }
+.route-result .route-count-note { margin: 0 0 9px; font-size: 10px; line-height: 1.5; }
 .route-result dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 5px 10px; }
 .route-result dt { color: var(--muted); }
 .route-result dd { margin: 0; }

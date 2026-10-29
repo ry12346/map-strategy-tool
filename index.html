@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#121820">
   <meta name="robots" content="noindex, nofollow">
   <title>真戦 PK2マップ</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=pk2-v12">
 </head>
 <body>
   <div id="app">
@@ -62,7 +62,7 @@
       <div class="sheet-header">
         <div>
           <h2>経路探索</h2>
-          <p>海上航路を含めて最短距離を探索</p>
+          <p>移動距離と、足場をつなぐ最小占領マス数を探索</p>
         </div>
         <button class="sheet-close" data-close-sheet type="button" aria-label="閉じる">×</button>
       </div>
@@ -120,6 +120,8 @@
           <p>地図上部の「城名」「関所名」「資源州」で表示を切り替えます。関所名にはレベルも表示します。</p>
           <h3>経路</h3>
           <p>地図上の通行可能な地点をタップして「ここから」「経由地」「ここまで」を指定します。地点を1つ以上登録すると、画面下部の操作バーから「詳細」を開けます。海上航路は常に使用し、必要に応じて通行不可にする関所を設定できます。経路点右側の「≡」を長押しし、そのまま上下へ動かすと順番を変更できます。</p>
+          <p>「最短移動距離」は部隊の通行経路です。「最小占領マス数」は、通常の隣接占領で陸地の足場をつなぐ場合の必要マス数です。航路や占領できない葦原は占領経路に含めません。葦原内の足場不要の資源地や遷城専用地も、通常の足場には使いません。地図上の線は「移動ルート」「占領ルート」で切り替えられます。</p>
+          <p>出発した城・本陣などは全体を確保済みとして数えます。城・本陣などを目的地にした場合は、その隣接地までを計算し、施設の攻略はマス数に含めません。既存の味方領地や特殊な遠隔占領は反映せず、経由地がある場合は区間ごとに最小の経路を求めます。</p>
           <h3>座標</h3>
           <p>左下の座標表示をタップすると現在のゲーム座標をコピーします。</p>
           <h3>メニュー</h3>
@@ -130,7 +132,7 @@
     </dialog>
   </div>
 
-  <script src="pk2_embedded_data.js"></script>
-  <script src="app.js"></script>
+  <script src="pk2_embedded_data.js?v=pk2-v12"></script>
+  <script src="app.js?v=pk2-v12"></script>
 </body>
 </html>

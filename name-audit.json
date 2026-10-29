@@ -1,0 +1,1656 @@
+{
+  "source": {
+    "file": "base.cw",
+    "sha256": "a5588c879617d3fd8dbc34f7f173edf5091646981da809f86c5bfc14564fc7ca",
+    "dictionary_start": 13847072,
+    "dictionary_end_exclusive": 14138912,
+    "translation_count": 36480,
+    "string_pool": 21264036
+  },
+  "facility_count": 164,
+  "matched": 164,
+  "difference_count": 0,
+  "facilities": [
+    {
+      "id": 1,
+      "category": "cities",
+      "internal_name": "猫城",
+      "display_name": "猫城",
+      "japanese_name": "猫城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 2,
+      "category": "cities",
+      "internal_name": "伊作城",
+      "display_name": "伊作城",
+      "japanese_name": "伊作城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 3,
+      "category": "cities",
+      "internal_name": "内城",
+      "display_name": "内城",
+      "japanese_name": "内城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 4,
+      "category": "cities",
+      "internal_name": "加治木城",
+      "display_name": "加治木城",
+      "japanese_name": "加治木城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 5,
+      "category": "cities",
+      "internal_name": "出水城",
+      "display_name": "出水城",
+      "japanese_name": "出水城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 6,
+      "category": "cities",
+      "internal_name": "给黎城",
+      "display_name": "給黎城",
+      "japanese_name": "給黎城",
+      "matched": true,
+      "dictionary_entry_offset": 14092912,
+      "translation_override": true
+    },
+    {
+      "id": 7,
+      "category": "cities",
+      "internal_name": "平佐城",
+      "display_name": "平佐城",
+      "japanese_name": "平佐城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 8,
+      "category": "cities",
+      "internal_name": "大口城",
+      "display_name": "大口城",
+      "japanese_name": "大口城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 9,
+      "category": "cities",
+      "internal_name": "横川城",
+      "display_name": "横川城",
+      "japanese_name": "横川城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 10,
+      "category": "cities",
+      "internal_name": "蒲生城",
+      "display_name": "蒲生城",
+      "japanese_name": "蒲生城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 11,
+      "category": "cities",
+      "internal_name": "清水城",
+      "display_name": "清水城",
+      "japanese_name": "清水城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 12,
+      "category": "cities",
+      "internal_name": "清色城",
+      "display_name": "清色城",
+      "japanese_name": "清色城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 13,
+      "category": "cities",
+      "internal_name": "亀井山城",
+      "display_name": "亀井山城",
+      "japanese_name": "亀井山城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 14,
+      "category": "cities",
+      "internal_name": "木牟礼城",
+      "display_name": "木牟礼城",
+      "japanese_name": "木牟礼城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 15,
+      "category": "cities",
+      "internal_name": "阿久根城",
+      "display_name": "阿久根城",
+      "japanese_name": "阿久根城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 16,
+      "category": "cities",
+      "internal_name": "指宿城",
+      "display_name": "指宿城",
+      "japanese_name": "指宿城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 17,
+      "category": "cities",
+      "internal_name": "加世田城",
+      "display_name": "加世田城",
+      "japanese_name": "加世田城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 18,
+      "category": "cities",
+      "internal_name": "诹访城",
+      "display_name": "諏訪城",
+      "japanese_name": "諏訪城",
+      "matched": true,
+      "dictionary_entry_offset": 14110096,
+      "translation_override": true
+    },
+    {
+      "id": 19,
+      "category": "cities",
+      "internal_name": "串木野城",
+      "display_name": "串木野城",
+      "japanese_name": "串木野城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 20,
+      "category": "cities",
+      "internal_name": "市来鹤丸城",
+      "display_name": "市来鶴丸城",
+      "japanese_name": "市来鶴丸城",
+      "matched": true,
+      "dictionary_entry_offset": 14027368,
+      "translation_override": true
+    },
+    {
+      "id": 21,
+      "category": "cities",
+      "internal_name": "富田城",
+      "display_name": "富田城",
+      "japanese_name": "富田城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 22,
+      "category": "cities",
+      "internal_name": "高山城",
+      "display_name": "高山城",
+      "japanese_name": "高山城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 23,
+      "category": "cities",
+      "internal_name": "饫肥城",
+      "display_name": "飫肥城",
+      "japanese_name": "飫肥城",
+      "matched": true,
+      "dictionary_entry_offset": 14132280,
+      "translation_override": true
+    },
+    {
+      "id": 24,
+      "category": "cities",
+      "internal_name": "都于郡城",
+      "display_name": "都於郡城",
+      "japanese_name": "都於郡城",
+      "matched": true,
+      "dictionary_entry_offset": 14122288,
+      "translation_override": true
+    },
+    {
+      "id": 25,
+      "category": "cities",
+      "internal_name": "志布志城",
+      "display_name": "志布志城",
+      "japanese_name": "志布志城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 26,
+      "category": "cities",
+      "internal_name": "廻城",
+      "display_name": "廻城",
+      "japanese_name": "廻城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 27,
+      "category": "cities",
+      "internal_name": "都城",
+      "display_name": "都城",
+      "japanese_name": "都城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 28,
+      "category": "cities",
+      "internal_name": "野尻城",
+      "display_name": "野尻城",
+      "japanese_name": "野尻城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 29,
+      "category": "cities",
+      "internal_name": "饭野城",
+      "display_name": "飯野城",
+      "japanese_name": "飯野城",
+      "matched": true,
+      "dictionary_entry_offset": 14132408,
+      "translation_override": true
+    },
+    {
+      "id": 30,
+      "category": "cities",
+      "internal_name": "三纳城",
+      "display_name": "三納城",
+      "japanese_name": "三納城",
+      "matched": true,
+      "dictionary_entry_offset": 13959792,
+      "translation_override": true
+    },
+    {
+      "id": 31,
+      "category": "cities",
+      "internal_name": "佐土原城",
+      "display_name": "佐土原城",
+      "japanese_name": "佐土原城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 32,
+      "category": "cities",
+      "internal_name": "加久藤城",
+      "display_name": "加久藤城",
+      "japanese_name": "加久藤城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 33,
+      "category": "cities",
+      "internal_name": "小林城",
+      "display_name": "小林城",
+      "japanese_name": "小林城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 34,
+      "category": "cities",
+      "internal_name": "日向山田城",
+      "display_name": "日向山田城",
+      "japanese_name": "日向山田城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 35,
+      "category": "cities",
+      "internal_name": "月山日和城",
+      "display_name": "月山日和城",
+      "japanese_name": "月山日和城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 36,
+      "category": "cities",
+      "internal_name": "紫波洲崎城",
+      "display_name": "紫波洲崎城",
+      "japanese_name": "紫波洲崎城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 37,
+      "category": "cities",
+      "internal_name": "曾井城",
+      "display_name": "曽井城",
+      "japanese_name": "曽井城",
+      "matched": true,
+      "dictionary_entry_offset": 14059224,
+      "translation_override": true
+    },
+    {
+      "id": 38,
+      "category": "cities",
+      "internal_name": "田野城",
+      "display_name": "田野城",
+      "japanese_name": "田野城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 39,
+      "category": "cities",
+      "internal_name": "弓张城",
+      "display_name": "弓張城",
+      "japanese_name": "弓張城",
+      "matched": true,
+      "dictionary_entry_offset": 14030512,
+      "translation_override": true
+    },
+    {
+      "id": 40,
+      "category": "cities",
+      "internal_name": "长门城",
+      "display_name": "長門城",
+      "japanese_name": "長門城",
+      "matched": true,
+      "dictionary_entry_offset": 14126400,
+      "translation_override": true
+    },
+    {
+      "id": 41,
+      "category": "cities",
+      "internal_name": "古处山城",
+      "display_name": "古処山城",
+      "japanese_name": "古処山城",
+      "matched": true,
+      "dictionary_entry_offset": 14000184,
+      "translation_override": true
+    },
+    {
+      "id": 42,
+      "category": "cities",
+      "internal_name": "势福寺城",
+      "display_name": "勢福寺城",
+      "japanese_name": "勢福寺城",
+      "matched": true,
+      "dictionary_entry_offset": 13993464,
+      "translation_override": true
+    },
+    {
+      "id": 43,
+      "category": "cities",
+      "internal_name": "佐贺城",
+      "display_name": "佐賀城",
+      "japanese_name": "佐賀城",
+      "matched": true,
+      "dictionary_entry_offset": 13971864,
+      "translation_override": true
+    },
+    {
+      "id": 44,
+      "category": "cities",
+      "internal_name": "大村城",
+      "display_name": "大村城",
+      "japanese_name": "大村城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 45,
+      "category": "cities",
+      "internal_name": "平户城",
+      "display_name": "平戸城",
+      "japanese_name": "平戸城",
+      "matched": true,
+      "dictionary_entry_offset": 14027856,
+      "translation_override": true
+    },
+    {
+      "id": 46,
+      "category": "cities",
+      "internal_name": "岩屋城",
+      "display_name": "岩屋城",
+      "japanese_name": "岩屋城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 47,
+      "category": "cities",
+      "internal_name": "立花山城",
+      "display_name": "立花山城",
+      "japanese_name": "立花山城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 48,
+      "category": "cities",
+      "internal_name": "伊万里城",
+      "display_name": "伊万里城",
+      "japanese_name": "伊万里城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 49,
+      "category": "cities",
+      "internal_name": "高祖城",
+      "display_name": "高祖城",
+      "japanese_name": "高祖城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 50,
+      "category": "cities",
+      "internal_name": "花尾城",
+      "display_name": "花尾城",
+      "japanese_name": "花尾城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 51,
+      "category": "cities",
+      "internal_name": "高鸟居城",
+      "display_name": "高鳥居城",
+      "japanese_name": "高鳥居城",
+      "matched": true,
+      "dictionary_entry_offset": 14134632,
+      "translation_override": true
+    },
+    {
+      "id": 52,
+      "category": "cities",
+      "internal_name": "胜尾城",
+      "display_name": "勝尾城",
+      "japanese_name": "勝尾城",
+      "matched": true,
+      "dictionary_entry_offset": 14096176,
+      "translation_override": true
+    },
+    {
+      "id": 53,
+      "category": "cities",
+      "internal_name": "三濑城",
+      "display_name": "三瀬城",
+      "japanese_name": "三瀬城",
+      "matched": true,
+      "dictionary_entry_offset": 13959744,
+      "translation_override": true
+    },
+    {
+      "id": 54,
+      "category": "cities",
+      "internal_name": "须古城",
+      "display_name": "須古城",
+      "japanese_name": "須古城",
+      "matched": true,
+      "dictionary_entry_offset": 14130568,
+      "translation_override": true
+    },
+    {
+      "id": 55,
+      "category": "cities",
+      "internal_name": "谏早城",
+      "display_name": "諫早城",
+      "japanese_name": "諫早城",
+      "matched": true,
+      "dictionary_entry_offset": 14110552,
+      "translation_override": true
+    },
+    {
+      "id": 56,
+      "category": "cities",
+      "internal_name": "岸岳城",
+      "display_name": "岸岳城",
+      "japanese_name": "岸岳城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 57,
+      "category": "cities",
+      "internal_name": "神浦城",
+      "display_name": "神浦城",
+      "japanese_name": "神浦城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 58,
+      "category": "cities",
+      "internal_name": "直谷城",
+      "display_name": "直谷城",
+      "japanese_name": "直谷城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 59,
+      "category": "cities",
+      "internal_name": "唐船城",
+      "display_name": "唐船城",
+      "japanese_name": "唐船城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 60,
+      "category": "cities",
+      "internal_name": "梶峰城",
+      "display_name": "梶峰城",
+      "japanese_name": "梶峰城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 61,
+      "category": "cities",
+      "internal_name": "门司城",
+      "display_name": "門司城",
+      "japanese_name": "門司城",
+      "matched": true,
+      "dictionary_entry_offset": 14126464,
+      "translation_override": true
+    },
+    {
+      "id": 62,
+      "category": "cities",
+      "internal_name": "城井谷城",
+      "display_name": "城井谷城",
+      "japanese_name": "城井谷城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 63,
+      "category": "cities",
+      "internal_name": "府内馆",
+      "display_name": "府内館",
+      "japanese_name": "府内館",
+      "matched": true,
+      "dictionary_entry_offset": 14028208,
+      "translation_override": true
+    },
+    {
+      "id": 64,
+      "category": "cities",
+      "internal_name": "冈城",
+      "display_name": "岡城",
+      "japanese_name": "岡城",
+      "matched": true,
+      "dictionary_entry_offset": 13979664,
+      "translation_override": true
+    },
+    {
+      "id": 65,
+      "category": "cities",
+      "internal_name": "臼杵城",
+      "display_name": "臼杵城",
+      "japanese_name": "臼杵城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 66,
+      "category": "cities",
+      "internal_name": "丰前松山城",
+      "display_name": "豊前松山城",
+      "japanese_name": "豊前松山城",
+      "matched": true,
+      "dictionary_entry_offset": 13963800,
+      "translation_override": true
+    },
+    {
+      "id": 67,
+      "category": "cities",
+      "internal_name": "香春岳城",
+      "display_name": "香春岳城",
+      "japanese_name": "香春岳城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 68,
+      "category": "cities",
+      "internal_name": "长岩城",
+      "display_name": "長岩城",
+      "japanese_name": "長岩城",
+      "matched": true,
+      "dictionary_entry_offset": 14126264,
+      "translation_override": true
+    },
+    {
+      "id": 69,
+      "category": "cities",
+      "internal_name": "角牟礼城",
+      "display_name": "角牟礼城",
+      "japanese_name": "角牟礼城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 70,
+      "category": "cities",
+      "internal_name": "杵筑城",
+      "display_name": "杵築城",
+      "japanese_name": "杵築城",
+      "matched": true,
+      "dictionary_entry_offset": 14063608,
+      "translation_override": true
+    },
+    {
+      "id": 71,
+      "category": "cities",
+      "internal_name": "栂牟礼城",
+      "display_name": "栂牟礼城",
+      "japanese_name": "栂牟礼城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 72,
+      "category": "cities",
+      "internal_name": "吉广城",
+      "display_name": "吉広城",
+      "japanese_name": "吉広城",
+      "matched": true,
+      "dictionary_entry_offset": 14002520,
+      "translation_override": true
+    },
+    {
+      "id": 73,
+      "category": "cities",
+      "internal_name": "铠岳城",
+      "display_name": "鎧岳城",
+      "japanese_name": "鎧岳城",
+      "matched": true,
+      "dictionary_entry_offset": 14124824,
+      "translation_override": true
+    },
+    {
+      "id": 74,
+      "category": "cities",
+      "internal_name": "佐田城",
+      "display_name": "佐田城",
+      "japanese_name": "佐田城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 75,
+      "category": "cities",
+      "internal_name": "一之户城",
+      "display_name": "一ツ戸城",
+      "japanese_name": "一ツ戸城",
+      "matched": true,
+      "dictionary_entry_offset": 13955976,
+      "translation_override": true
+    },
+    {
+      "id": 76,
+      "category": "cities",
+      "internal_name": "高田城",
+      "display_name": "高田城",
+      "japanese_name": "高田城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 77,
+      "category": "cities",
+      "internal_name": "玖珠城",
+      "display_name": "玖珠城",
+      "japanese_name": "玖珠城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 78,
+      "category": "cities",
+      "internal_name": "鹤贺城",
+      "display_name": "鶴賀城",
+      "japanese_name": "鶴賀城",
+      "matched": true,
+      "dictionary_entry_offset": 14135112,
+      "translation_override": true
+    },
+    {
+      "id": 79,
+      "category": "cities",
+      "internal_name": "宇留津城",
+      "display_name": "宇留津城",
+      "japanese_name": "宇留津城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 80,
+      "category": "cities",
+      "internal_name": "南山城",
+      "display_name": "南山城",
+      "japanese_name": "南山城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 81,
+      "category": "cities",
+      "internal_name": "久留米城",
+      "display_name": "久留米城",
+      "japanese_name": "久留米城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 82,
+      "category": "cities",
+      "internal_name": "隈本城",
+      "display_name": "隈本城",
+      "japanese_name": "隈本城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 83,
+      "category": "cities",
+      "internal_name": "县城",
+      "display_name": "縣城",
+      "japanese_name": "縣城",
+      "matched": true,
+      "dictionary_entry_offset": 13997056,
+      "translation_override": true
+    },
+    {
+      "id": 84,
+      "category": "cities",
+      "internal_name": "柳川城",
+      "display_name": "柳川城",
+      "japanese_name": "柳川城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 85,
+      "category": "cities",
+      "internal_name": "猫尾城",
+      "display_name": "猫尾城",
+      "japanese_name": "猫尾城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 86,
+      "category": "cities",
+      "internal_name": "日知屋城",
+      "display_name": "日知屋城",
+      "japanese_name": "日知屋城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 87,
+      "category": "cities",
+      "internal_name": "田中城",
+      "display_name": "田中城",
+      "japanese_name": "田中城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 88,
+      "category": "cities",
+      "internal_name": "内牧城",
+      "display_name": "内牧城",
+      "japanese_name": "内牧城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 89,
+      "category": "cities",
+      "internal_name": "筒之岳城",
+      "display_name": "筒ヶ嶽城",
+      "japanese_name": "筒ヶ嶽城",
+      "matched": true,
+      "dictionary_entry_offset": 14088888,
+      "translation_override": true
+    },
+    {
+      "id": 90,
+      "category": "cities",
+      "internal_name": "入下城",
+      "display_name": "入下城",
+      "japanese_name": "入下城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 91,
+      "category": "cities",
+      "internal_name": "阿苏城寨",
+      "display_name": "阿蘇要害",
+      "japanese_name": "阿蘇要害",
+      "matched": true,
+      "dictionary_entry_offset": 14127816,
+      "translation_override": true
+    },
+    {
+      "id": 92,
+      "category": "cities",
+      "internal_name": "岩户城寨",
+      "display_name": "岩戸要害",
+      "japanese_name": "岩戸要害",
+      "matched": true,
+      "dictionary_entry_offset": 14025184,
+      "translation_override": true
+    },
+    {
+      "id": 93,
+      "category": "cities",
+      "internal_name": "山阴城",
+      "display_name": "山陰城",
+      "japanese_name": "山陰城",
+      "matched": true,
+      "dictionary_entry_offset": 14024728,
+      "translation_override": true
+    },
+    {
+      "id": 94,
+      "category": "cities",
+      "internal_name": "高城",
+      "display_name": "高城",
+      "japanese_name": "高城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 95,
+      "category": "cities",
+      "internal_name": "家代城寨",
+      "display_name": "家代要害",
+      "japanese_name": "家代要害",
+      "matched": true,
+      "dictionary_entry_offset": 14019376,
+      "translation_override": true
+    },
+    {
+      "id": 96,
+      "category": "cities",
+      "internal_name": "本渡城",
+      "display_name": "本渡城",
+      "japanese_name": "本渡城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 97,
+      "category": "cities",
+      "internal_name": "丰福城",
+      "display_name": "豊福城",
+      "japanese_name": "豊福城",
+      "matched": true,
+      "dictionary_entry_offset": 13963912,
+      "translation_override": true
+    },
+    {
+      "id": 98,
+      "category": "cities",
+      "internal_name": "古麓城",
+      "display_name": "古麓城",
+      "japanese_name": "古麓城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 99,
+      "category": "cities",
+      "internal_name": "堂崎城",
+      "display_name": "堂崎城",
+      "japanese_name": "堂崎城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 100,
+      "category": "cities",
+      "internal_name": "上天草城寨",
+      "display_name": "上天草要害",
+      "japanese_name": "上天草要害",
+      "matched": true,
+      "dictionary_entry_offset": 13959984,
+      "translation_override": true
+    },
+    {
+      "id": 101,
+      "category": "cities",
+      "internal_name": "苇北城寨",
+      "display_name": "葦北要害",
+      "japanese_name": "葦北要害",
+      "matched": true,
+      "dictionary_entry_offset": 14098120,
+      "translation_override": true
+    },
+    {
+      "id": 102,
+      "category": "cities",
+      "internal_name": "汤前城寨",
+      "display_name": "湯前要害",
+      "japanese_name": "湯前要害",
+      "matched": true,
+      "dictionary_entry_offset": 14072024,
+      "translation_override": true
+    },
+    {
+      "id": 103,
+      "category": "cities",
+      "internal_name": "穂北城",
+      "display_name": "穂北城",
+      "japanese_name": "穂北城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 104,
+      "category": "cities",
+      "internal_name": "宇纳间城寨",
+      "display_name": "宇納間要害",
+      "japanese_name": "宇納間要害",
+      "matched": true,
+      "dictionary_entry_offset": 14016992,
+      "translation_override": true
+    },
+    {
+      "id": 105,
+      "category": "cities",
+      "internal_name": "新納石城",
+      "display_name": "新納石城",
+      "japanese_name": "新納石城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 106,
+      "category": "cities",
+      "internal_name": "宫原城寨",
+      "display_name": "宮原要害",
+      "japanese_name": "宮原要害",
+      "matched": true,
+      "dictionary_entry_offset": 14019280,
+      "translation_override": true
+    },
+    {
+      "id": 107,
+      "category": "cities",
+      "internal_name": "人吉城",
+      "display_name": "人吉城",
+      "japanese_name": "人吉城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 108,
+      "category": "cities",
+      "internal_name": "釜盖城",
+      "display_name": "釜蓋城",
+      "japanese_name": "釜蓋城",
+      "matched": true,
+      "dictionary_entry_offset": 14123936,
+      "translation_override": true
+    },
+    {
+      "id": 109,
+      "category": "cities",
+      "internal_name": "滨城",
+      "display_name": "浜の城",
+      "japanese_name": "浜の城",
+      "matched": true,
+      "dictionary_entry_offset": 14076048,
+      "translation_override": true
+    },
+    {
+      "id": 110,
+      "category": "cities",
+      "internal_name": "日之江城",
+      "display_name": "日之江城",
+      "japanese_name": "日之江城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 111,
+      "category": "cities",
+      "internal_name": "竹迫城",
+      "display_name": "竹迫城",
+      "japanese_name": "竹迫城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 112,
+      "category": "cities",
+      "internal_name": "御船城",
+      "display_name": "御船城",
+      "japanese_name": "御船城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 113,
+      "category": "cities",
+      "internal_name": "宇土古城",
+      "display_name": "宇土古城",
+      "japanese_name": "宇土古城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 114,
+      "category": "cities",
+      "internal_name": "津森城",
+      "display_name": "津森城",
+      "japanese_name": "津森城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 115,
+      "category": "cities",
+      "internal_name": "早川城",
+      "display_name": "早川城",
+      "japanese_name": "早川城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 116,
+      "category": "cities",
+      "internal_name": "爱藤寺城",
+      "display_name": "愛藤寺城",
+      "japanese_name": "愛藤寺城",
+      "matched": true,
+      "dictionary_entry_offset": 14077648,
+      "translation_override": true
+    },
+    {
+      "id": 117,
+      "category": "cities",
+      "internal_name": "岩尾城",
+      "display_name": "岩尾城",
+      "japanese_name": "岩尾城",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 170,
+      "category": "cities",
+      "internal_name": "岩尾城寨",
+      "display_name": "岩尾要害",
+      "japanese_name": "岩尾要害",
+      "matched": true,
+      "dictionary_entry_offset": 14025152,
+      "translation_override": true
+    },
+    {
+      "id": 118,
+      "category": "gates",
+      "internal_name": "高城西本阵",
+      "display_name": "高城西本陣",
+      "japanese_name": "高城西本陣",
+      "matched": true,
+      "dictionary_entry_offset": 14134352,
+      "translation_override": true
+    },
+    {
+      "id": 119,
+      "category": "gates",
+      "internal_name": "高城西前哨地",
+      "display_name": "高城西前哨地",
+      "japanese_name": "高城西前哨地",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 120,
+      "category": "gates",
+      "internal_name": "高城东本阵",
+      "display_name": "高城東本陣",
+      "japanese_name": "高城東本陣",
+      "matched": true,
+      "dictionary_entry_offset": 14134344,
+      "translation_override": true
+    },
+    {
+      "id": 121,
+      "category": "gates",
+      "internal_name": "高城东前哨地",
+      "display_name": "高城東前哨地",
+      "japanese_name": "高城東前哨地",
+      "matched": true,
+      "dictionary_entry_offset": 14134336,
+      "translation_override": true
+    },
+    {
+      "id": 122,
+      "category": "gates",
+      "internal_name": "滨城西本阵",
+      "display_name": "浜の城西本陣",
+      "japanese_name": "浜の城西本陣",
+      "matched": true,
+      "dictionary_entry_offset": 14076080,
+      "translation_override": true
+    },
+    {
+      "id": 123,
+      "category": "gates",
+      "internal_name": "滨城西前哨地",
+      "display_name": "浜の城西前哨地",
+      "japanese_name": "浜の城西前哨地",
+      "matched": true,
+      "dictionary_entry_offset": 14076072,
+      "translation_override": true
+    },
+    {
+      "id": 124,
+      "category": "gates",
+      "internal_name": "滨城东本阵",
+      "display_name": "浜の城東本陣",
+      "japanese_name": "浜の城東本陣",
+      "matched": true,
+      "dictionary_entry_offset": 14076064,
+      "translation_override": true
+    },
+    {
+      "id": 125,
+      "category": "gates",
+      "internal_name": "滨城东前哨地",
+      "display_name": "浜の城東前哨地",
+      "japanese_name": "浜の城東前哨地",
+      "matched": true,
+      "dictionary_entry_offset": 14076056,
+      "translation_override": true
+    },
+    {
+      "id": 126,
+      "category": "gates",
+      "internal_name": "筑后川西关所",
+      "display_name": "筑後川西関所",
+      "japanese_name": "筑後川西関所",
+      "matched": true,
+      "dictionary_entry_offset": 14088720,
+      "translation_override": true
+    },
+    {
+      "id": 127,
+      "category": "gates",
+      "internal_name": "筑后川东关所",
+      "display_name": "筑後川東関所",
+      "japanese_name": "筑後川東関所",
+      "matched": true,
+      "dictionary_entry_offset": 14088712,
+      "translation_override": true
+    },
+    {
+      "id": 128,
+      "category": "gates",
+      "internal_name": "大野关所",
+      "display_name": "大野関所",
+      "japanese_name": "大野関所",
+      "matched": true,
+      "dictionary_entry_offset": 14012776,
+      "translation_override": true
+    },
+    {
+      "id": 129,
+      "category": "gates",
+      "internal_name": "宇目关所",
+      "display_name": "宇目関所",
+      "japanese_name": "宇目関所",
+      "matched": true,
+      "dictionary_entry_offset": 14016984,
+      "translation_override": true
+    },
+    {
+      "id": 131,
+      "category": "gates",
+      "internal_name": "芦北关所",
+      "display_name": "葦北関所",
+      "japanese_name": "葦北関所",
+      "matched": true,
+      "dictionary_entry_offset": 14097784,
+      "translation_override": true
+    },
+    {
+      "id": 132,
+      "category": "gates",
+      "internal_name": "庄内关所",
+      "display_name": "庄内関所",
+      "japanese_name": "庄内関所",
+      "matched": true,
+      "dictionary_entry_offset": 14028048,
+      "translation_override": true
+    },
+    {
+      "id": 133,
+      "category": "gates",
+      "internal_name": "久津良关所",
+      "display_name": "久津良関所",
+      "japanese_name": "久津良関所",
+      "matched": true,
+      "dictionary_entry_offset": 13965936,
+      "translation_override": true
+    },
+    {
+      "id": 134,
+      "category": "gates",
+      "internal_name": "小田关所",
+      "display_name": "小田関所",
+      "japanese_name": "小田関所",
+      "matched": true,
+      "dictionary_entry_offset": 14022928,
+      "translation_override": true
+    },
+    {
+      "id": 135,
+      "category": "gates",
+      "internal_name": "田川关所",
+      "display_name": "田川関所",
+      "japanese_name": "田川関所",
+      "matched": true,
+      "dictionary_entry_offset": 14079728,
+      "translation_override": true
+    },
+    {
+      "id": 136,
+      "category": "gates",
+      "internal_name": "合志关所",
+      "display_name": "合志関所",
+      "japanese_name": "合志関所",
+      "matched": true,
+      "dictionary_entry_offset": 14002376,
+      "translation_override": true
+    },
+    {
+      "id": 137,
+      "category": "gates",
+      "internal_name": "西原关所",
+      "display_name": "西原関所",
+      "japanese_name": "西原関所",
+      "matched": true,
+      "dictionary_entry_offset": 14102832,
+      "translation_override": true
+    },
+    {
+      "id": 138,
+      "category": "gates",
+      "internal_name": "丰野关所",
+      "display_name": "豊野関所",
+      "japanese_name": "豊野関所",
+      "matched": true,
+      "dictionary_entry_offset": 13964416,
+      "translation_override": true
+    },
+    {
+      "id": 139,
+      "category": "gates",
+      "internal_name": "椎叶关所",
+      "display_name": "椎葉関所",
+      "japanese_name": "椎葉関所",
+      "matched": true,
+      "dictionary_entry_offset": 14065336,
+      "translation_override": true
+    },
+    {
+      "id": 140,
+      "category": "gates",
+      "internal_name": "盐见关所",
+      "display_name": "塩見関所",
+      "japanese_name": "塩見関所",
+      "matched": true,
+      "dictionary_entry_offset": 14083016,
+      "translation_override": true
+    },
+    {
+      "id": 141,
+      "category": "gates",
+      "internal_name": "平岩关所",
+      "display_name": "平岩関所",
+      "japanese_name": "平岩関所",
+      "matched": true,
+      "dictionary_entry_offset": 14027824,
+      "translation_override": true
+    },
+    {
+      "id": 142,
+      "category": "gates",
+      "internal_name": "川原关所",
+      "display_name": "川原関所",
+      "japanese_name": "川原関所",
+      "matched": true,
+      "dictionary_entry_offset": 14025296,
+      "translation_override": true
+    },
+    {
+      "id": 143,
+      "category": "gates",
+      "internal_name": "茶臼原关所",
+      "display_name": "茶臼原関所",
+      "japanese_name": "茶臼原関所",
+      "matched": true,
+      "dictionary_entry_offset": 14098712,
+      "translation_override": true
+    },
+    {
+      "id": 144,
+      "category": "gates",
+      "internal_name": "三池关所",
+      "display_name": "三池関所",
+      "japanese_name": "三池関所",
+      "matched": true,
+      "dictionary_entry_offset": 13959688,
+      "translation_override": true
+    },
+    {
+      "id": 145,
+      "category": "gates",
+      "internal_name": "长洲关所",
+      "display_name": "長洲関所",
+      "japanese_name": "長洲関所",
+      "matched": true,
+      "dictionary_entry_offset": 14126336,
+      "translation_override": true
+    },
+    {
+      "id": 146,
+      "category": "gates",
+      "internal_name": "苓北关所",
+      "display_name": "苓北関所",
+      "japanese_name": "苓北関所",
+      "matched": true,
+      "dictionary_entry_offset": 14098136,
+      "translation_override": true
+    },
+    {
+      "id": 147,
+      "category": "gates",
+      "internal_name": "有明关所",
+      "display_name": "有明関所",
+      "japanese_name": "有明関所",
+      "matched": true,
+      "dictionary_entry_offset": 14060056,
+      "translation_override": true
+    },
+    {
+      "id": 148,
+      "category": "gates",
+      "internal_name": "南串山关所",
+      "display_name": "南串山関所",
+      "japanese_name": "南串山関所",
+      "matched": true,
+      "dictionary_entry_offset": 13995464,
+      "translation_override": true
+    },
+    {
+      "id": 149,
+      "category": "gates",
+      "internal_name": "口之津关所",
+      "display_name": "口之津関所",
+      "japanese_name": "口之津関所",
+      "matched": true,
+      "dictionary_entry_offset": 14000008,
+      "translation_override": true
+    },
+    {
+      "id": 150,
+      "category": "gates",
+      "internal_name": "吾妻关所",
+      "display_name": "吾妻関所",
+      "japanese_name": "吾妻関所",
+      "matched": true,
+      "dictionary_entry_offset": 14003688,
+      "translation_override": true
+    },
+    {
+      "id": 151,
+      "category": "gates",
+      "internal_name": "国见关所",
+      "display_name": "国見関所",
+      "japanese_name": "国見関所",
+      "matched": true,
+      "dictionary_entry_offset": 14005976,
+      "translation_override": true
+    },
+    {
+      "id": 162,
+      "category": "gates",
+      "internal_name": "早川城本阵",
+      "display_name": "早川城本陣",
+      "japanese_name": "早川城本陣",
+      "matched": true,
+      "dictionary_entry_offset": 14055312,
+      "translation_override": true
+    },
+    {
+      "id": 163,
+      "category": "gates",
+      "internal_name": "岩尾城西本阵",
+      "display_name": "岩尾城西本陣",
+      "japanese_name": "岩尾城西本陣",
+      "matched": true,
+      "dictionary_entry_offset": 14025168,
+      "translation_override": true
+    },
+    {
+      "id": 164,
+      "category": "gates",
+      "internal_name": "愛藤寺城本阵",
+      "display_name": "愛藤寺城本陣",
+      "japanese_name": "愛藤寺城本陣",
+      "matched": true,
+      "dictionary_entry_offset": 14037264,
+      "translation_override": true
+    },
+    {
+      "id": 165,
+      "category": "gates",
+      "internal_name": "岩尾城西前哨地",
+      "display_name": "岩尾城西前哨地",
+      "japanese_name": "岩尾城西前哨地",
+      "matched": true,
+      "dictionary_entry_offset": null,
+      "translation_override": false
+    },
+    {
+      "id": 166,
+      "category": "gates",
+      "internal_name": "入佐本阵",
+      "display_name": "入佐本陣",
+      "japanese_name": "入佐本陣",
+      "matched": true,
+      "dictionary_entry_offset": 13976560,
+      "translation_override": true
+    },
+    {
+      "id": 167,
+      "category": "gates",
+      "internal_name": "岩尾城东本阵",
+      "display_name": "岩尾城東本陣",
+      "japanese_name": "岩尾城東本陣",
+      "matched": true,
+      "dictionary_entry_offset": 14025144,
+      "translation_override": true
+    },
+    {
+      "id": 168,
+      "category": "gates",
+      "internal_name": "五老瀑布本阵",
+      "display_name": "五老ヶ滝本陣",
+      "japanese_name": "五老ヶ滝本陣",
+      "matched": true,
+      "dictionary_entry_offset": 13967624,
+      "translation_override": true
+    },
+    {
+      "id": 169,
+      "category": "gates",
+      "internal_name": "岩尾城东前哨地",
+      "display_name": "岩尾城東前哨地",
+      "japanese_name": "岩尾城東前哨地",
+      "matched": true,
+      "dictionary_entry_offset": 14025136,
+      "translation_override": true
+    },
+    {
+      "id": 171,
+      "category": "gates",
+      "internal_name": "胁本关所",
+      "display_name": "脇本関所",
+      "japanese_name": "脇本関所",
+      "matched": true,
+      "dictionary_entry_offset": 14096072,
+      "translation_override": true
+    },
+    {
+      "id": 172,
+      "category": "gates",
+      "internal_name": "长岛关所",
+      "display_name": "長島関所",
+      "japanese_name": "長島関所",
+      "matched": true,
+      "dictionary_entry_offset": 14126248,
+      "translation_override": true
+    },
+    {
+      "id": 173,
+      "category": "gates",
+      "internal_name": "小滨关所",
+      "display_name": "小浜関所",
+      "japanese_name": "小浜関所",
+      "matched": true,
+      "dictionary_entry_offset": 14022912,
+      "translation_override": true
+    },
+    {
+      "id": 174,
+      "category": "gates",
+      "internal_name": "比木关所",
+      "display_name": "比木関所",
+      "japanese_name": "比木関所",
+      "matched": true,
+      "dictionary_entry_offset": 14070968,
+      "translation_override": true
+    },
+    {
+      "id": 176,
+      "category": "gates",
+      "internal_name": "通润口关所",
+      "display_name": "通潤口関所",
+      "japanese_name": "通潤口関所",
+      "matched": true,
+      "dictionary_entry_offset": 14118384,
+      "translation_override": true
+    }
+  ],
+  "differences": []
+}

@@ -1,0 +1,782 @@
+[
+  {
+    "res_id": 1,
+    "name": "空地",
+    "land_type": 1,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 2,
+    "name": "1级木材",
+    "land_type": 2,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 3,
+    "name": "2级木材",
+    "land_type": 2,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 4,
+    "name": "3级木材",
+    "land_type": 2,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 5,
+    "name": "4级木材",
+    "land_type": 2,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 6,
+    "name": "5级木材",
+    "land_type": 2,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 7,
+    "name": "6级木材",
+    "land_type": 2,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 8,
+    "name": "7级木材",
+    "land_type": 2,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 9,
+    "name": "8级木材",
+    "land_type": 2,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 10,
+    "name": "9级木材",
+    "land_type": 2,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 11,
+    "name": "10级木材",
+    "land_type": 2,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 12,
+    "name": "1级石料",
+    "land_type": 3,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 13,
+    "name": "2级石料",
+    "land_type": 3,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 14,
+    "name": "3级石料",
+    "land_type": 3,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 15,
+    "name": "4级石料",
+    "land_type": 3,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 16,
+    "name": "5级石料",
+    "land_type": 3,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 17,
+    "name": "6级石料",
+    "land_type": 3,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 18,
+    "name": "7级石料",
+    "land_type": 3,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 19,
+    "name": "8级石料",
+    "land_type": 3,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 20,
+    "name": "9级石料",
+    "land_type": 3,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 21,
+    "name": "10级石料",
+    "land_type": 3,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 22,
+    "name": "1级粮食",
+    "land_type": 4,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 23,
+    "name": "2级粮食",
+    "land_type": 4,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 24,
+    "name": "3级粮食",
+    "land_type": 4,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 25,
+    "name": "4级粮食",
+    "land_type": 4,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 26,
+    "name": "5级粮食",
+    "land_type": 4,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 27,
+    "name": "6级粮食",
+    "land_type": 4,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 28,
+    "name": "7级粮食",
+    "land_type": 4,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 29,
+    "name": "8级粮食",
+    "land_type": 4,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 30,
+    "name": "9级粮食",
+    "land_type": 4,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 31,
+    "name": "10级粮食",
+    "land_type": 4,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 32,
+    "name": "1级铁矿",
+    "land_type": 5,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 33,
+    "name": "2级铁矿",
+    "land_type": 5,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 34,
+    "name": "3级铁矿",
+    "land_type": 5,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 35,
+    "name": "4级铁矿",
+    "land_type": 5,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 36,
+    "name": "5级铁矿",
+    "land_type": 5,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 37,
+    "name": "6级铁矿",
+    "land_type": 5,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 38,
+    "name": "7级铁矿",
+    "land_type": 5,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 39,
+    "name": "8级铁矿",
+    "land_type": 5,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 40,
+    "name": "9级铁矿",
+    "land_type": 5,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 41,
+    "name": "10级铁矿",
+    "land_type": 5,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 42,
+    "name": "6级铜矿",
+    "land_type": 6,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 43,
+    "name": "7级铜矿",
+    "land_type": 6,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 44,
+    "name": "8级铜矿",
+    "land_type": 6,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 45,
+    "name": "9级铜矿",
+    "land_type": 6,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 46,
+    "name": "10级铜矿",
+    "land_type": 6,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 47,
+    "name": "河",
+    "land_type": 99,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 48,
+    "name": "山1",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 49,
+    "name": "山2",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 50,
+    "name": "山3",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 51,
+    "name": "山4",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 52,
+    "name": "山5",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 53,
+    "name": "山6",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 54,
+    "name": "山7",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 55,
+    "name": "山8",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 56,
+    "name": "山9",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 57,
+    "name": "山10",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 58,
+    "name": "山11",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 59,
+    "name": "山12",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 60,
+    "name": "山13",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 61,
+    "name": "山14",
+    "land_type": 98,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 62,
+    "name": "水路",
+    "land_type": 7,
+    "can_be_conquered": false,
+    "is_block": false,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": true
+  },
+  {
+    "res_id": 64,
+    "name": "河岸",
+    "land_type": 99,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 65,
+    "name": "芦苇荡空地",
+    "land_type": 30,
+    "can_be_conquered": false,
+    "is_block": false,
+    "can_be_occupied": false,
+    "need_adjacent": false,
+    "on_water": false
+  },
+  {
+    "res_id": 66,
+    "name": "芦苇荡6级铜矿",
+    "land_type": 35,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": false,
+    "on_water": false
+  },
+  {
+    "res_id": 67,
+    "name": "芦苇荡7级铜矿",
+    "land_type": 35,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": false,
+    "on_water": false
+  },
+  {
+    "res_id": 68,
+    "name": "芦苇荡8级铜矿",
+    "land_type": 35,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": false,
+    "on_water": false
+  },
+  {
+    "res_id": 69,
+    "name": "芦苇荡9级铜矿",
+    "land_type": 35,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": false,
+    "on_water": false
+  },
+  {
+    "res_id": 70,
+    "name": "芦苇荡10级铜矿",
+    "land_type": 35,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": false,
+    "on_water": false
+  },
+  {
+    "res_id": 194,
+    "name": "航路",
+    "land_type": 29,
+    "can_be_conquered": false,
+    "is_block": false,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": true
+  },
+  {
+    "res_id": 195,
+    "name": "浅滩",
+    "land_type": 100,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 196,
+    "name": "支流",
+    "land_type": 99,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 197,
+    "name": "海",
+    "land_type": 99,
+    "can_be_conquered": false,
+    "is_block": true,
+    "can_be_occupied": false,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 198,
+    "name": "道路",
+    "land_type": 101,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 199,
+    "name": "城下町",
+    "land_type": 102,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 200,
+    "name": "芦苇荡浅滩",
+    "land_type": 103,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 201,
+    "name": "军争之地",
+    "land_type": 104,
+    "can_be_conquered": true,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  },
+  {
+    "res_id": 202,
+    "name": "迁城地基",
+    "land_type": 105,
+    "can_be_conquered": false,
+    "is_block": false,
+    "can_be_occupied": true,
+    "need_adjacent": true,
+    "on_water": false
+  }
+]

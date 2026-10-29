@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const APP_VERSION = 22;
+  const APP_VERSION = 24;
   const PK2_WIDTH = 2000;
   const PK2_HEIGHT = 3250;
   const PK2_DISPLAY_WIDTH = 2595;
@@ -13,7 +13,7 @@
   const RESOURCE_ZONE_BOUNDARY_GATE_IDS = new Set([126,127,128,129,131,132,133,136,137,138,139,142,143]);
   const PK2_ROUTE_WORKER_SOURCE = String.raw`
 const W=2000,H=3250,N=W*H;
-let bitset=null,stationBits=null,seaBits=null;
+let bitset=null,stationBits=null,seaBits=null,occupationBits=null;
 let gScore=new Uint32Array(N),roadScore=new Uint16Array(N),turnScore=new Uint16Array(N),seen=new Uint16Array(N),parentDir=new Uint8Array(N),generation=1;
 const dirs=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
 function bitOn(bits,i){return !!bits&&((bits[i>>3]>>(i&7))&1)!==0}
@@ -62,12 +62,89 @@ function requiredSet(points){const s=new Set();for(const p of points||[])s.add(N
 function blockRouteInterior(path,set,required){if(!path||path.length<3)return;for(let i=1;i<path.length-1;i++){const idx=path[i];if(!required.has(idx))set.add(idx)}}
 function blockDiversityWindow(path,set,required,ratio,windowSize=7){if(!path||path.length<5)return;const center=Math.max(1,Math.min(path.length-2,Math.floor((path.length-1)*ratio))),half=Math.floor(windowSize/2);for(let i=Math.max(1,center-half);i<=Math.min(path.length-2,center+half);i++){const idx=path[i];if(!required.has(idx))set.add(idx)}}
 function pack(r){return{totalSteps:r.totalSteps,stationCells:r.stationCells,seaCells:r.seaCells||0,turns:r.turns,expanded:r.expanded,path:new Uint32Array(r.path)}}
-self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.buffer);stationBits=new Uint8Array(Math.ceil(N/8));seaBits=new Uint8Array(Math.ceil(N/8));const runs=m.stationRuns?new Uint32Array(m.stationRuns):new Uint32Array(0);fillRuns(stationBits,runs);const seaRuns=m.seaRuns?new Uint32Array(m.seaRuns):new Uint32Array(0);fillRuns(seaBits,seaRuns);self.postMessage({type:'ready'});return}if(m.type!=='route')return;try{
+
+function pointFacility(point,facilities){
+  return facilities.find(f=>point[0]>=f.xmin&&point[0]<=f.xmax&&point[1]>=f.ymin&&point[1]<=f.ymax)||null;
+}
+function occupationRoute(start,goal,blocked,facilities,maxExpand){
+  if(!occupationBits)return{status:'missing_data'};
+  const inside=([x,y])=>Number.isInteger(x)&&Number.isInteger(y)&&x>=0&&x<W&&y>=0&&y<H;
+  if(!inside(start)||!inside(goal))return{status:'outside'};
+  const origin=pointFacility(start,facilities),target=pointFacility(goal,facilities);
+  const roots=[];
+  if(origin){
+    for(let y=origin.ymin;y<=origin.ymax;y++)for(let x=origin.xmin;x<=origin.xmax;x++){
+      const i=y*W+x;if(x>=0&&x<W&&y>=0&&y<H&&!blocked.has(i))roots.push(i);
+    }
+  }else{
+    const i=start[1]*W+start[0];
+    if(!bitOn(occupationBits,i)||blocked.has(i))return{status:'start_not_occupiable'};
+    roots.push(i);
+  }
+  if(!roots.length)return{status:'start_blocked'};
+  const goalIndex=goal[1]*W+goal[0];
+  if(!target&&(!bitOn(occupationBits,goalIndex)||blocked.has(goalIndex)))return{status:'goal_not_occupiable'};
+  if(target){
+    let accessible=false;
+    for(let y=target.ymin;y<=target.ymax;y++)for(let x=target.xmin;x<=target.xmax;x++)if(!blocked.has(y*W+x))accessible=true;
+    if(!accessible)return{status:'goal_blocked'};
+  }
+  const distance=(x,y)=>target
+    ?Math.max(0,Math.max(target.xmin-x,0,x-target.xmax,target.ymin-y,0,y-target.ymax)-1)
+    :heuristic(x,y,goal[0],goal[1]);
+  const reached=i=>target?distance(i%W,Math.floor(i/W))===0:i===goalIndex;
+  bump();const heap=new Heap();
+  for(const i of roots){
+    seen[i]=generation;gScore[i]=0;parentDir[i]=0;
+    heap.push({i,g:0,f:distance(i%W,Math.floor(i/W)),r:0,t:0});
+  }
+  let expanded=0,last=-1;
+  while(heap.length){
+    const q=heap.pop(),i=q.i;
+    if(seen[i]!==generation||gScore[i]!==q.g)continue;
+    if(reached(i)){last=i;break;}
+    if(++expanded>maxExpand)return{status:'max_expand',expanded};
+    const x=i%W,y=Math.floor(i/W);
+    for(let di=0;di<dirs.length;di++){
+      const nx=x+dirs[di][0],ny=y+dirs[di][1];
+      if(nx<0||nx>=W||ny<0||ny>=H)continue;
+      const ni=ny*W+nx;
+      if(!bitOn(occupationBits,ni)||blocked.has(ni))continue;
+      const ng=q.g+1;
+      if(seen[ni]===generation&&gScore[ni]<=ng)continue;
+      seen[ni]=generation;gScore[ni]=ng;parentDir[ni]=di+1;
+      heap.push({i:ni,g:ng,f:ng+distance(nx,ny),r:0,t:0});
+    }
+  }
+  if(last<0)return{status:'no_path',expanded};
+  const path=[last];let current=last;
+  while(parentDir[current]){
+    const [dx,dy]=dirs[parentDir[current]-1];current-=dy*W+dx;path.push(current);
+  }
+  path.reverse();return{status:'ok',path,steps:path.length-1,expanded};
+}
+function occupationAll(points,blocked,facilities,maxExpand){
+  const paths=[],captured=new Set(),segments=[];
+  const initiallyOwned=new Set(),origin=pointFacility(points[0],facilities);
+  if(origin){for(let y=origin.ymin;y<=origin.ymax;y++)for(let x=origin.xmin;x<=origin.xmax;x++)initiallyOwned.add(y*W+x);}
+  else initiallyOwned.add(points[0][1]*W+points[0][0]);
+  let expanded=0;
+  for(let k=0;k<points.length-1;k++){
+    const r=occupationRoute(points[k],points[k+1],blocked,facilities,maxExpand);
+    expanded+=r.expanded||0;
+    if(r.status!=='ok')return{status:r.status,segment:k+1,expanded};
+    paths.push(new Uint32Array(r.path));segments.push(r.steps);
+    for(const i of r.path.slice(1))if(!initiallyOwned.has(i))captured.add(i);
+  }
+  return{status:'ok',totalCaptures:captured.size,segmentSteps:segments,paths,expanded};
+}
+self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.buffer);occupationBits=m.occupationBuffer&&m.occupationBuffer.byteLength===Math.ceil(N/8)?new Uint8Array(m.occupationBuffer):null;stationBits=new Uint8Array(Math.ceil(N/8));seaBits=new Uint8Array(Math.ceil(N/8));const runs=m.stationRuns?new Uint32Array(m.stationRuns):new Uint32Array(0);fillRuns(stationBits,runs);const seaRuns=m.seaRuns?new Uint32Array(m.seaRuns):new Uint32Array(0);fillRuns(seaBits,seaRuns);self.postMessage({type:'ready'});return}if(m.type!=='route')return;try{
   if(!bitset)throw new Error('route data not initialized');const gateBlocked=makeBlocked(m.gates||[],m.blockedGateIds||[]),pts=m.points||[],routeCount=Math.max(1,Math.min(3,Number(m.routeCount)||1)),allowSea=m.allowSea!==false,routes=[];
   const r1=routeAll(pts,gateBlocked,m.maxExpand||3000000,allowSea);if(r1.status!=='ok'){self.postMessage({type:'result',requestId:m.requestId,status:r1.status});return}routes.push(pack(r1));
   if(routeCount>=2){const req=requiredSet(pts),avoid1=new Set(gateBlocked);blockRouteInterior(r1.path,avoid1,req);const r2=routeAll(pts,avoid1,m.maxExpand||3000000,allowSea);if(r2.status==='ok'){routes.push(pack(r2));if(routeCount>=3){let r3=null;for(const ratio of [.5,.34,.66,.25,.75]){const avoid3=new Set(avoid1);blockDiversityWindow(r2.path,avoid3,req,ratio,7);const trial=routeAll(pts,avoid3,m.maxExpand||3000000,allowSea);if(trial.status==='ok'){r3=trial;break}}if(r3)routes.push(pack(r3))}}
   }
-  const transfers=routes.map(r=>r.path.buffer);self.postMessage({type:'result',requestId:m.requestId,status:'ok',routes},transfers)
+  const occupation=occupationAll(pts,gateBlocked,m.facilities||[],m.maxExpand||3000000);
+  const transfers=routes.map(r=>r.path.buffer).concat((occupation.paths||[]).map(p=>p.buffer));self.postMessage({type:'result',requestId:m.requestId,status:'ok',routes,occupation},transfers)
 }catch(err){self.postMessage({type:'result',requestId:m.requestId,status:'error',message:String(err&&err.message||err)})}}
 `;
 
@@ -139,6 +216,8 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
   state.routeGoalSet = state.routeGoalSet === true;
   state.routePath = [];
   state.altPaths = [];
+  state.occupationPaths = [];
+  state.routeMode = 'movement';
   state.routeResult = null;
   state.showAlternates = false;
 
@@ -276,9 +355,13 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     ctx.restore();
   }
   function drawRoutes() {
-    drawRoutePath(state.routePath,'#ef4d43',[]);
-    if(state.showAlternates && state.altPaths[0]) drawRoutePath(state.altPaths[0],'#2ac1d6',[8,5]);
-    if(state.showAlternates && state.altPaths[1]) drawRoutePath(state.altPaths[1],'#bf73ff',[3,5]);
+    if(state.routeMode==='occupation') {
+      for(const path of state.occupationPaths)drawRoutePath(path,'#f2b84b',[]);
+    }else{
+      drawRoutePath(state.routePath,'#ef4d43',[]);
+      if(state.showAlternates && state.altPaths[0]) drawRoutePath(state.altPaths[0],'#2ac1d6',[8,5]);
+      if(state.showAlternates && state.altPaths[1]) drawRoutePath(state.altPaths[1],'#bf73ff',[3,5]);
+    }
     for(let i=0;i<state.routePoints.length;i++) {
       const [gx,gy]=state.routePoints[i], p=gameToWorld(gx+.5,gy+.5), r=Math.max(4,6/view.scale);
       ctx.save();ctx.fillStyle=i===0?'#23b967':(state.routeGoalSet&&i===state.routePoints.length-1&&i>0?'#e13d36':'#ffd54d');ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(1,1.4/view.scale);ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();ctx.stroke();
@@ -430,7 +513,7 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     if(autoRoute&&state.routePoints.length>=2)autoCalculateRoute();
     else cancelPendingRouteCalculation();
   }
-  function clearRouteResult() {state.routePath=[];state.altPaths=[];state.routeResult=null;state.showAlternates=false;}
+  function clearRouteResult() {state.routePath=[];state.altPaths=[];state.occupationPaths=[];state.routeResult=null;state.showAlternates=false;}
 
   function routePointPlace(point) {
     let best=null,bestD=2.5;for(const p of places){const d=Math.hypot(Number(p.center_x)-point[0],Number(p.center_y)-point[1]);if(d<bestD){best=p;bestD=d;}}return best;
@@ -504,31 +587,52 @@ self.onmessage=e=>{const m=e.data;if(m.type==='init'){bitset=new Uint8Array(m.bu
     const url=URL.createObjectURL(new Blob([PK2_ROUTE_WORKER_SOURCE],{type:'text/javascript'}));routeWorker=new Worker(url);
     routeWorker.onmessage=e=>{const m=e.data||{};if(m.type==='ready'){routeWorkerReady=true;refs.loadingBadge.hidden=true;if(pendingAutoRoute){pendingAutoRoute=false;calculateRoute(1);}return;}if(m.type==='result')handleRouteResult(m);};
     routeWorker.onerror=e=>{routeWorkerReady=false;routeBusy=false;refs.loadingBadge.textContent='経路データ初期化エラー';refs.calculateRoute.disabled=false;console.error(e);};
-    const bits=decodeBase64Bytes(data.passableLandB64),stationRuns=new Uint32Array(Array.isArray(data.stationRoadRuns)?data.stationRoadRuns:[]),seaRuns=new Uint32Array(Array.isArray(data.seaRouteRuns)?data.seaRouteRuns:[]);
-    routeWorker.postMessage({type:'init',buffer:bits.buffer,stationRuns:stationRuns.buffer,seaRuns:seaRuns.buffer},[bits.buffer,stationRuns.buffer,seaRuns.buffer]);
+    const bits=decodeBase64Bytes(data.passableLandB64),occupation=buildOccupationBits(bits),stationRuns=new Uint32Array(Array.isArray(data.stationRoadRuns)?data.stationRoadRuns:[]),seaRuns=new Uint32Array(Array.isArray(data.seaRouteRuns)?data.seaRouteRuns:[]);
+    routeWorker.postMessage({type:'init',buffer:bits.buffer,occupationBuffer:occupation.buffer,stationRuns:stationRuns.buffer,seaRuns:seaRuns.buffer},[bits.buffer,occupation.buffer,stationRuns.buffer,seaRuns.buffer]);
   }
   function decodeBase64Bytes(text) {const bin=atob(text),out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out;}
+  function buildOccupationBits(landBits) {
+    if(!data.occupationDataVersion||!Array.isArray(data.occupationExcludedRuns))return new Uint8Array(0);
+    const result=landBits.slice(),runs=data.occupationExcludedRuns;
+    if(runs.length%2)return new Uint8Array(0);
+    for(let k=0;k<runs.length;k+=2){
+      const start=Number(runs[k]),length=Number(runs[k+1]);
+      if(!Number.isInteger(start)||!Number.isInteger(length)||start<0||length<0||start+length>PK2_WIDTH*PK2_HEIGHT)return new Uint8Array(0);
+      for(let i=start,end=start+length;i<end;i++)result[i>>3]&=~(1<<(i&7));
+    }
+    return result;
+  }
   function calculateRoute(routeCount=1) {
     if(routeBusy)return;if(state.routePoints.length<2){showToast('開始地点と到着地点を指定してください',true);return;}if(!routeWorkerReady){showToast('経路データを準備中です',true);return;}
     routeBusy=true;refs.calculateRoute.disabled=true;refs.calculateRoute.textContent='探索中…';refs.routeResult.innerHTML='<p>経路を探索中…</p>';state.showAlternates=routeCount>1;
+    if(routeCount>1)state.routeMode='movement';
     const requestId=++requestSeq;activeRouteRequestId=requestId;
-    routeWorker.postMessage({type:'route',requestId,points:state.routePoints,blockedGateIds:state.blockedGates,gates,routeCount,allowSea:true,maxExpand:3000000});
+    routeWorker.postMessage({type:'route',requestId,points:state.routePoints,blockedGateIds:state.blockedGates,gates,facilities:places.map(p=>({xmin:Number(p.xmin),xmax:Number(p.xmax),ymin:Number(p.ymin),ymax:Number(p.ymax)})),routeCount,allowSea:true,maxExpand:3000000});
   }
   function handleRouteResult(m) {
     if(Number(m.requestId||0)!==activeRouteRequestId)return;
     routeBusy=false;refs.calculateRoute.disabled=false;refs.calculateRoute.textContent='経路を表示';
     if(pendingAutoRoute){pendingAutoRoute=false;calculateRoute(1);return;}
-    if(m.status!=='ok'){state.routePath=[];state.altPaths=[];state.routeResult={status:m.status||'error'};renderRouteResult();requestRender();return;}
+    if(m.status!=='ok'){state.routePath=[];state.altPaths=[];state.occupationPaths=[];state.routeResult={status:m.status||'error'};renderRouteResult();requestRender();return;}
     const routes=Array.isArray(m.routes)?m.routes:[],first=routes[0]||{};state.routePath=Array.from(first.path||[]);state.altPaths=routes.slice(1,3).map(r=>Array.from(r.path||[]));
     const crossed=[];for(const g of gates){const xmin=Number(g.xmin),xmax=Number(g.xmax),ymin=Number(g.ymin),ymax=Number(g.ymax);if(state.routePath.some(idx=>{const x=idx%PK2_WIDTH,y=Math.floor(idx/PK2_WIDTH);return x>=xmin&&x<=xmax&&y>=ymin&&y<=ymax;}))crossed.push(Number(g.id));}
-    state.routeResult={status:'ok',totalSteps:Number(first.totalSteps||0),seaCells:Number(first.seaCells||0),stationCells:Number(first.stationCells||0),crossedGates:crossed,alternatives:routes.slice(1,3).map(r=>({steps:Number(r.totalSteps||0),seaCells:Number(r.seaCells||0)}))};syncRouteUi();requestRender();
+    const occupation=m.occupation||{status:'missing_data'};state.occupationPaths=(occupation.paths||[]).map(p=>Array.from(p));
+    if(occupation.status!=='ok')state.routeMode='movement';
+    state.routeResult={status:'ok',totalSteps:Number(first.totalSteps||0),seaCells:Number(first.seaCells||0),stationCells:Number(first.stationCells||0),crossedGates:crossed,occupation:{status:occupation.status,totalCaptures:occupation.totalCaptures??null,segment:occupation.segment??null},alternatives:routes.slice(1,3).map(r=>({steps:Number(r.totalSteps||0),seaCells:Number(r.seaCells||0)}))};syncRouteUi();requestRender();
   }
   function renderRouteResult() {
     const r=state.routeResult;if(!r){refs.routeResult.innerHTML='<p>開始地点と到着地点を指定してください。</p>';return;}
     if(r.status!=='ok'){const labels={outside:'マップ範囲外です',start_blocked:'開始点が通行不可です',goal_blocked:'終点が通行不可です',no_path:'到達できる経路がありません',max_expand:'探索上限に達しました',error:'経路計算エラー'};refs.routeResult.innerHTML=`<p>${escapeHtml(labels[r.status]||r.status)}</p>`;return;}
     const crossed=(r.crossedGates||[]).map(id=>{const g=gates.find(x=>Number(x.id)===Number(id));return g?gateDisplayName(g):String(id);});const blocked=state.blockedGates.map(id=>{const g=gates.find(x=>Number(x.id)===Number(id));return g?gateDisplayName(g):String(id);});
-    let alt='';if(state.showAlternates&&Array.isArray(r.alternatives)&&r.alternatives.length)alt='<div class="alt-route-line">'+r.alternatives.map((a,i)=>`候補${i+2}：${a.steps}マス${a.seaCells?`（海上 ${a.seaCells}）`:''}`).join('<br>')+'</div>';
-    refs.routeResult.innerHTML=`<div class="route-main">最短 ${r.totalSteps} マス</div><dl><dt>海上航路</dt><dd>${r.seaCells?`${r.seaCells}マス`:'未使用'}</dd><dt>通過関所</dt><dd>${crossed.length?escapeHtml(crossed.join('、')):'-'}</dd><dt>遮断関所</dt><dd>${blocked.length?escapeHtml(blocked.join('、')):'-'}</dd></dl>${alt}`;
+    let alt='';if(state.routeMode==='movement'&&state.showAlternates&&Array.isArray(r.alternatives)&&r.alternatives.length)alt='<div class="alt-route-line">'+r.alternatives.map((a,i)=>`移動候補${i+2}：${a.steps}マス${a.seaCells?`（海上 ${a.seaCells}）`:''}`).join('<br>')+'</div>';
+    const occupation=r.occupation||{status:'missing_data'};
+    const captureLabels={missing_data:'占領データを読み込めません',outside:'マップ範囲外です',start_not_occupiable:'出発点を足場にできません',goal_not_occupiable:'到着点は隣接占領できません',start_blocked:'出発点が遮断されています',goal_blocked:'到着点が遮断されています',no_path:'占領だけでつながる経路なし',max_expand:'占領経路の探索上限に達しました'};
+    const countLabel=state.routePoints.length>2?'占領マス数（経由順）':'最小占領マス数';
+    const captureText=occupation.status==='ok'?`<strong>${occupation.totalCaptures}<small> マス</small></strong>`:`<span class="route-capture-error">${escapeHtml(captureLabels[occupation.status]||'占領経路を計算できません')}</span>`;
+    const captureNote='出発施設は確保済み。通常地は目的地を含み、施設が目的地の場合は隣接地までを数えます。';
+    const switcher=occupation.status==='ok'?`<div class="route-kind-switch" aria-label="地図に表示する経路"><button type="button" data-route-mode="movement" aria-pressed="${state.routeMode==='movement'}">移動ルート</button><button type="button" data-route-mode="occupation" aria-pressed="${state.routeMode==='occupation'}">占領ルート</button></div>`:'';
+    refs.routeResult.innerHTML=`<div class="route-metrics"><div class="route-metric"><span>最短移動距離</span><strong>${r.totalSteps}<small> マス</small></strong></div><div class="route-metric occupation"><span>${countLabel}</span>${captureText}</div></div>${switcher}<p class="route-count-note">${captureNote}</p><dl><dt>移動の海上航路</dt><dd>${r.seaCells?`${r.seaCells}マス`:'未使用'}</dd><dt>移動の通過関所</dt><dd>${crossed.length?escapeHtml(crossed.join('、')):'-'}</dd><dt>遮断関所</dt><dd>${blocked.length?escapeHtml(blocked.join('、')):'-'}</dd></dl>${alt}`;
+    for(const button of refs.routeResult.querySelectorAll('[data-route-mode]'))button.addEventListener('click',()=>{state.routeMode=button.dataset.routeMode;renderRouteResult();requestRender();});
   }
 
   async function copyText(text) {
